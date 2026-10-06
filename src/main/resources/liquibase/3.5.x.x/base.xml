@@ -631,5 +631,6 @@
   <include relativeToChangelogFile="true" file="126-analyzer-mapping-sub-identity.xml"/>
   <include relativeToChangelogFile="true" file="127-analyzer-result-raw-sub-identity.xml"/>
   <include relativeToChangelogFile="true" file="128-analyzer-result-instrument-provenance.xml"/>
+  <include relativeToChangelogFile="true" file="129-dictionary-terminology-mapping.xml"/>
 
 </databaseChangeLog>
