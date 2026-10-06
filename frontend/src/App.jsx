@@ -1435,7 +1435,19 @@ export default function App() {
                       </Suspense>
                     </RouteErrorBoundary>
                   )}
-                  role={Roles.ANALYSER_IMPORT}
+                  role={[Roles.ANALYSER_IMPORT, Roles.GLOBAL_ADMIN]}
+                />
+                <SecureRoute
+                  path="/analyzers/:analyzerId/mapping"
+                  exact
+                  component={() => (
+                    <RouteErrorBoundary {...routeErrorAnalyzers}>
+                      <Suspense fallback={null}>
+                        <AnalyzerTypeMappingPage />
+                      </Suspense>
+                    </RouteErrorBoundary>
+                  )}
+                  role={[Roles.ANALYSER_IMPORT, Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/analyzers/qc/instruments/:instrumentId"
