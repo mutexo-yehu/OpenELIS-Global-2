@@ -12306,7 +12306,7 @@
   "order.tests.testedElsewhere.lab": "Performing laboratory",
   "order.tests.testedElsewhere.saveFailed": "Tested elsewhere was not saved: {reason}",
   "label.testCatalog.basicInfo.opensMicrobiologyCase": "Opens a Microbiology case",
-  "label.testCatalog.basicInfo.microbiologyCaseRole": "Microbiology role",
+  "label.testCatalog.basicInfo.microbiologyCaseRole": "Case role",
   "label.testCatalog.basicInfo.microbiologyCaseRole.CULTURE": "Culture",
   "label.testCatalog.basicInfo.microbiologyCaseRole.DIRECT": "Direct",
   "label.testCatalog.basicInfo.microbiologyCaseRole.CASE": "Case",
@@ -12353,5 +12353,7 @@
   "microbiology.sets.warning.MIXED_POPULATIONS": "This set contains paediatric and adult bottles.",
   "order.cultureSetNumber": "Set number",
   "order.cultureSetNumber.required": "Enter a positive whole set number.",
-  "order.cultureBottle.duplicate": "Duplicate bottle"
+  "order.cultureBottle.duplicate": "Duplicate bottle",
+  "microbiology.sets.container": "Container type",
+  "microbiology.sets.bodySite": "Body site"
 }
