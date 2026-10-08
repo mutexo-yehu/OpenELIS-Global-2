@@ -12304,5 +12304,11 @@
   "order.tests.testedElsewhereAt": "Tested elsewhere: {lab}",
   "order.tests.testedElsewhere.value": "Reported value",
   "order.tests.testedElsewhere.lab": "Performing laboratory",
-  "order.tests.testedElsewhere.saveFailed": "Tested elsewhere was not saved: {reason}"
+  "order.tests.testedElsewhere.saveFailed": "Tested elsewhere was not saved: {reason}",
+  "label.testCatalog.basicInfo.opensMicrobiologyCase": "Opens a Microbiology case",
+  "label.testCatalog.basicInfo.microbiologyCaseRole": "Microbiology role",
+  "label.testCatalog.basicInfo.microbiologyCaseRole.CULTURE": "Culture",
+  "label.testCatalog.basicInfo.microbiologyCaseRole.DIRECT": "Direct",
+  "label.testCatalog.basicInfo.microbiologyCaseRole.CASE": "Case",
+  "label.testCatalog.basicInfo.collectedInSets": "Collected in sets"
 }
