@@ -13,6 +13,7 @@ import { Roles } from "../utils/Utils";
  * Built on call, not on import, so modules that are mocked in tests aren't read early.
  */
 export function buildRoutes() {
+  const QC_ROLES = [Roles.GLOBAL_ADMIN, Roles.ANALYSER_IMPORT];
   const ANALYZER_RESULTS_ROLES = [Roles.GLOBAL_ADMIN, Roles.ANALYSER_IMPORT];
   return [
     { path: "/login", exact: true, guarded: false },
@@ -55,7 +56,13 @@ export function buildRoutes() {
       role: "",
       labUnitRole: { Immunohistochemistry: [Roles.RESULTS] },
     },
-    { path: "/CytologyDashboard", exact: true, guarded: true, role: "" },
+    {
+      path: "/CytologyDashboard",
+      exact: true,
+      guarded: true,
+      role: "",
+      labUnitRole: { Cytology: [Roles.RESULTS] },
+    },
     {
       path: "/genericProgram",
       exact: true,
@@ -440,18 +447,8 @@ export function buildRoutes() {
       guarded: true,
       role: [Roles.RECEPTION, Roles.RESULTS, Roles.VALIDATION],
     },
-    {
-      path: "/qa/qc/reagent-qc",
-      exact: true,
-      guarded: true,
-      role: Roles.LAB_SUPERVISOR,
-    },
-    {
-      path: "/qa/qc/manual-qc",
-      exact: true,
-      guarded: true,
-      role: Roles.LAB_SUPERVISOR,
-    },
+    { path: "/qa/qc/reagent-qc", exact: true, guarded: true, role: QC_ROLES },
+    { path: "/qa/qc/manual-qc", exact: true, guarded: true, role: QC_ROLES },
     {
       path: "/qa/qi/dashboard",
       exact: true,
@@ -500,7 +497,7 @@ export function buildRoutes() {
       path: "/qa/qms/audit-trail",
       exact: true,
       guarded: true,
-      role: Roles.GLOBAL_ADMIN,
+      role: [Roles.GLOBAL_ADMIN, Roles.AUDIT_TRAIL],
     },
     {
       path: "/qa/qms/e-signature-log",
@@ -529,18 +526,8 @@ export function buildRoutes() {
       guarded: true,
       role: [Roles.RECEPTION, Roles.RESULTS, Roles.VALIDATION],
     },
-    {
-      path: "/qa/qc/reagent-qc",
-      exact: true,
-      guarded: true,
-      role: Roles.LAB_SUPERVISOR,
-    },
-    {
-      path: "/qa/qc/manual-qc",
-      exact: true,
-      guarded: true,
-      role: Roles.LAB_SUPERVISOR,
-    },
+    { path: "/qa/qc/reagent-qc", exact: true, guarded: true, role: QC_ROLES },
+    { path: "/qa/qc/manual-qc", exact: true, guarded: true, role: QC_ROLES },
     {
       path: "/qa/qi/dashboard",
       exact: true,
@@ -570,7 +557,7 @@ export function buildRoutes() {
       path: "/qa/qms/audit-trail",
       exact: true,
       guarded: true,
-      role: Roles.GLOBAL_ADMIN,
+      role: [Roles.GLOBAL_ADMIN, Roles.AUDIT_TRAIL],
     },
     {
       path: "/qa/qms/e-signature-log",
@@ -687,56 +674,31 @@ export function buildRoutes() {
       path: "/analyzers/qc/instruments/:instrumentId",
       exact: true,
       guarded: true,
-      role: Roles.LAB_SUPERVISOR,
+      role: QC_ROLES,
     },
-    {
-      path: "/qa/qc/dashboard",
-      exact: true,
-      guarded: true,
-      role: Roles.LAB_SUPERVISOR,
-    },
-    {
-      path: "/qa/qc/dashboard",
-      exact: true,
-      guarded: true,
-      role: Roles.LAB_SUPERVISOR,
-    },
-    {
-      path: "/qa/qc/alerts",
-      exact: true,
-      guarded: true,
-      role: Roles.LAB_SUPERVISOR,
-    },
+    { path: "/qa/qc/dashboard", exact: true, guarded: true, role: QC_ROLES },
+    { path: "/qa/qc/dashboard", exact: true, guarded: true, role: QC_ROLES },
+    { path: "/qa/qc/alerts", exact: true, guarded: true, role: QC_ROLES },
     {
       path: "/analyzers/qc/charts/:analyzerId",
       exact: true,
       guarded: true,
-      role: Roles.LAB_SUPERVISOR,
+      role: QC_ROLES,
     },
-    {
-      path: "/qa/qc/control-lots",
-      exact: true,
-      guarded: true,
-      role: Roles.LAB_SUPERVISOR,
-    },
+    { path: "/qa/qc/control-lots", exact: true, guarded: true, role: QC_ROLES },
     {
       path: "/analyzers/qc/control-lots/new",
       exact: true,
       guarded: true,
-      role: Roles.LAB_SUPERVISOR,
+      role: QC_ROLES,
     },
     {
       path: "/analyzers/qc/control-lots/:id",
       exact: true,
       guarded: true,
-      role: Roles.LAB_SUPERVISOR,
+      role: QC_ROLES,
     },
-    {
-      path: "/qa/qc/rule-config",
-      exact: true,
-      guarded: true,
-      role: Roles.LAB_SUPERVISOR,
-    },
+    { path: "/qa/qc/rule-config", exact: true, guarded: true, role: QC_ROLES },
     {
       path: "/PatientHistory",
       exact: true,
