@@ -28,6 +28,41 @@ import SearchPatientForm from "../../patient/SearchPatientForm";
 import "../../Style.css";
 
 const PATIENT_ENTITY_NAME = "PATIENT";
+// "Viewed" events come from the patient access log, not the change history
+const VIEW_ACTION = "R";
+
+// what was looked at, from the endpoint that served it
+const ACCESS_RESOURCES = [
+  [/patient-search/, "systemAudit.access.patientSearch"],
+  [/patient-details|patientByLabNumer/, "systemAudit.access.patientRecord"],
+  [/patient-photos/, "systemAudit.access.patientPhoto"],
+  [/patient-id-documents/, "systemAudit.access.patientDocument"],
+  [/LogbookResults|PatientResults|AccessionResults/, "systemAudit.access.results"],
+  [/AccessionValidation/, "systemAudit.access.validation"],
+  [/ElectronicOrders/, "systemAudit.access.electronicOrders"],
+  [/SampleEdit|order\/search/, "systemAudit.access.order"],
+  [/ReportPrint/, "systemAudit.access.report"],
+];
+
+const decodeQuery = (query) => {
+  try {
+    return decodeURIComponent((query || "").replace(/\+/g, " "));
+  } catch (e) {
+    return query || "";
+  }
+};
+
+const formatTimestamp = (timestamp) =>
+  timestamp
+    ? new Date(timestamp).toLocaleString(navigator.language, {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })
+    : "";
 
 const headers = [
   {
@@ -74,7 +109,13 @@ const SystemAuditEvents = () => {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showPatientSearch, setShowPatientSearch] = useState(false);
 
-  const isPatientEntity = selectedEntityType === PATIENT_ENTITY_NAME;
+  const isViewAction = selectedAction === VIEW_ACTION;
+  // the patient picker serves both "changes to this patient" and "who viewed this patient"
+  const isPatientEntity =
+    selectedEntityType === PATIENT_ENTITY_NAME || isViewAction;
+  const auditUrl = isViewAction
+    ? "/rest/patientAccessLog"
+    : "/rest/systemAuditEvents";
 
   const allLabel = intl.formatMessage({ id: "systemAudit.filter.all" });
 
@@ -92,7 +133,38 @@ const SystemAuditEvents = () => {
       id: "D",
       text: intl.formatMessage({ id: "systemAudit.action.delete" }),
     },
+    {
+      id: VIEW_ACTION,
+      text: intl.formatMessage({ id: "systemAudit.action.view" }),
+    },
   ];
+
+  const accessEventRow = (e) => {
+    const resource = ACCESS_RESOURCES.find(([pattern]) =>
+      pattern.test(e.resource || ""),
+    );
+    let entityId = "";
+    if (e.patientId) {
+      entityId = intl.formatMessage(
+        { id: "systemAudit.access.patient" },
+        { id: e.patientId },
+      );
+    } else if (e.accessionNumber) {
+      entityId = intl.formatMessage(
+        { id: "systemAudit.access.labNumber" },
+        { id: e.accessionNumber },
+      );
+    }
+    return {
+      ...e,
+      entityType: resource
+        ? intl.formatMessage({ id: resource[1] })
+        : e.resource,
+      entityId,
+      action: intl.formatMessage({ id: "systemAudit.action.view" }),
+      changes: decodeQuery(e.query),
+    };
+  };
 
   useEffect(() => {
     getFromOpenElisServer("/rest/systemAuditEvents/entityTypes", (data) => {
@@ -114,8 +186,9 @@ const SystemAuditEvents = () => {
       if (ps !== undefined) params.set("pageSize", ps);
       if (startDate) params.set("startDate", startDate);
       if (endDate) params.set("endDate", endDate);
-      if (selectedEntityType) params.set("entityType", selectedEntityType);
-      if (selectedAction) params.set("action", selectedAction);
+      if (selectedEntityType && !isViewAction)
+        params.set("entityType", selectedEntityType);
+      if (selectedAction && !isViewAction) params.set("action", selectedAction);
       if (selectedUser) params.set("userId", selectedUser);
       if (searchText) params.set("search", searchText);
       if (selectedPatient?.patientPK) {
@@ -128,6 +201,7 @@ const SystemAuditEvents = () => {
       endDate,
       selectedEntityType,
       selectedAction,
+      isViewAction,
       selectedUser,
       searchText,
       selectedPatient,
@@ -140,10 +214,17 @@ const SystemAuditEvents = () => {
       const params = buildParams(p, ps);
 
       getFromOpenElisServer(
-        "/rest/systemAuditEvents?" + params.toString(),
+        auditUrl + "?" + params.toString(),
         (data) => {
           if (data && data.events) {
             const formatted = data.events.map((e, idx) => {
+              if (isViewAction) {
+                return {
+                  ...accessEventRow(e),
+                  id: String((p - 1) * ps + idx + 1),
+                  timestamp: formatTimestamp(e.timestamp),
+                };
+              }
               const changesObj = e.changes || {};
               const changesStr = Object.keys(changesObj).length > 0
                 ? Object.entries(changesObj)
@@ -165,16 +246,7 @@ const SystemAuditEvents = () => {
               return {
                 ...e,
                 id: String((p - 1) * ps + idx + 1),
-                timestamp: e.timestamp
-                  ? new Date(e.timestamp).toLocaleString(navigator.language, {
-                      day: "2-digit",
-                      month: "2-digit",
-                      year: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      hour12: false,
-                    })
-                  : "",
+                timestamp: formatTimestamp(e.timestamp),
                 changes: changesStr,
               };
             });
@@ -188,7 +260,7 @@ const SystemAuditEvents = () => {
         },
       );
     },
-    [buildParams],
+    [buildParams, auditUrl, isViewAction],
   );
 
   const handleSearch = () => {
@@ -205,9 +277,7 @@ const SystemAuditEvents = () => {
   const handleExportCsv = () => {
     const params = buildParams();
     window.open(
-      config.serverBaseUrl +
-        "/rest/systemAuditEvents/export?" +
-        params.toString(),
+      config.serverBaseUrl + auditUrl + "/export?" + params.toString(),
       "_blank",
     );
   };
@@ -283,7 +353,7 @@ const SystemAuditEvents = () => {
               setSelectedEntityType(newType);
               // Switching away from PATIENT clears the selected patient so the
               // next query is unconstrained.
-              if (newType !== PATIENT_ENTITY_NAME) {
+              if (newType !== PATIENT_ENTITY_NAME && !isViewAction) {
                 setSelectedPatient(null);
               }
             }}
@@ -296,9 +366,16 @@ const SystemAuditEvents = () => {
             titleText={intl.formatMessage({ id: "systemAudit.filter.action" })}
             items={actionOptions}
             itemToString={(item) => (item ? item.text : "")}
-            onChange={({ selectedItem }) =>
-              setSelectedAction(selectedItem ? selectedItem.id : "")
-            }
+            onChange={({ selectedItem }) => {
+              const newAction = selectedItem ? selectedItem.id : "";
+              setSelectedAction(newAction);
+              if (
+                newAction !== VIEW_ACTION &&
+                selectedEntityType !== PATIENT_ENTITY_NAME
+              ) {
+                setSelectedPatient(null);
+              }
+            }}
             label={intl.formatMessage({ id: "systemAudit.filter.action" })}
           />
         </Column>
@@ -432,7 +509,11 @@ const SystemAuditEvents = () => {
           >
             <FormattedMessage id="systemAudit.filter.export" />
           </Button>
-          <Button kind="tertiary" onClick={handleExportPdf}>
+          <Button
+            kind="tertiary"
+            onClick={handleExportPdf}
+            disabled={isViewAction}
+          >
             <FormattedMessage id="systemAudit.filter.exportPdf" />
           </Button>
         </Column>

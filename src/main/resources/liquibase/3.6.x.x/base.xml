@@ -13,5 +13,6 @@
   <include relativeToChangelogFile="true" file="005-menu-presentation.xml"/>
   <include relativeToChangelogFile="true" file="006-analysis-sample-type-name.xml"/>
   <include relativeToChangelogFile="true" file="007-backfill-fhir-uuids-again.xml"/>
+  <include relativeToChangelogFile="true" file="008-patient-access-log.xml"/>
 
 </databaseChangeLog>

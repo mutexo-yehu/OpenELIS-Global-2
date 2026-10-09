@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+  <!-- Who viewed patient data: one row per successful read of a patient-identifiable
+       endpoint (PatientAccessAuditInterceptor). Kept apart from history, which records
+       changes only, so read volume doesn't bloat the change history. -->
+  <changeSet id="patient-access-log-table" author="mutexo-yehu">
+    <createTable schemaName="clinlims" tableName="patient_access_log">
+      <column name="id" type="bigint" autoIncrement="true">
+        <constraints primaryKey="true" primaryKeyName="patient_access_log_pk"/>
+      </column>
+      <column name="access_time" type="timestamp">
+        <constraints nullable="false"/>
+      </column>
+      <column name="sys_user_id" type="numeric(10,0)"/>
+      <column name="login_name" type="varchar(255)"/>
+      <column name="http_method" type="varchar(10)"/>
+      <column name="resource" type="varchar(255)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="query_string" type="text"/>
+      <column name="patient_id" type="numeric(10,0)"/>
+      <column name="accession_number" type="varchar(60)"/>
+      <column name="client_address" type="varchar(255)"/>
+      <column name="http_status" type="int"/>
+    </createTable>
+    <createIndex schemaName="clinlims" tableName="patient_access_log" indexName="patient_access_log_time_i">
+      <column name="access_time"/>
+    </createIndex>
+    <createIndex schemaName="clinlims" tableName="patient_access_log" indexName="patient_access_log_patient_i">
+      <column name="patient_id"/>
+    </createIndex>
+    <createIndex schemaName="clinlims" tableName="patient_access_log" indexName="patient_access_log_accession_i">
+      <column name="accession_number"/>
+    </createIndex>
+    <createIndex schemaName="clinlims" tableName="patient_access_log" indexName="patient_access_log_user_i">
+      <column name="sys_user_id"/>
+    </createIndex>
+  </changeSet>
+</databaseChangeLog>
