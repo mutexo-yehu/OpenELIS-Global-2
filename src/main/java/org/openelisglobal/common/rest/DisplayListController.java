@@ -88,6 +88,9 @@ public class DisplayListController extends BaseRestController {
     @Value("${org.itech.login.form:true}")
     private Boolean useFormLogin;
 
+    @Value("${org.openelisglobal.session.timeout.minutes:20}")
+    private int sessionTimeoutMinutes;
+
     @Autowired
     private ProviderService providerService;
 
@@ -434,6 +437,7 @@ public class DisplayListController extends BaseRestController {
         configs.put("studyManagementTab", studyManagementTab != null ? studyManagementTab.getValue() : "false");
         configs.put("useSaml", useSAML ? "true" : "false");
         configs.put("useSamlLoginPage", useSamlLoginPage ? "true" : "false");
+        configs.put("sessionTimeoutMinutes", String.valueOf(sessionTimeoutMinutes));
         configs.put("useOauth", useOAUTH ? "true" : "false");
         if (useOAUTH) {
             ResolvableType type = ResolvableType.forInstance(clientRegistrationRepository).as(Iterable.class);

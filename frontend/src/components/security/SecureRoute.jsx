@@ -10,9 +10,16 @@ import config from "../../config.json";
 import { Roles, hasPermission } from "../utils/Utils";
 import { FormattedMessage, useIntl } from "react-intl";
 
-const idleTimeout = 1000 * 60 * 30; // milliseconds until idle warning will appear
 const idleWarningTimeout = 1000 * 60; // milliseconds until logout is automatically processed from idle warning
-const idleLogoutTimeout = idleTimeout + idleWarningTimeout;
+// used until the server's sessionTimeoutMinutes arrives: warning after 30 minutes, logout 1 minute later
+const defaultIdleLogoutTimeout = 1000 * 60 * 30 + idleWarningTimeout;
+
+// log out when the server session would end (org.openelisglobal.session.timeout.minutes),
+// with the warning one minute before
+const idleLogoutTimeoutFrom = (configurationProperties) => {
+  const minutes = parseInt(configurationProperties?.sessionTimeoutMinutes, 10);
+  return minutes > 1 ? minutes * 60 * 1000 : defaultIdleLogoutTimeout;
+};
 
 function SecureRoute(props) {
   const [permissionGranted, setPermissionGranted] = useState(false);
@@ -126,7 +133,7 @@ function SecureRoute(props) {
     onIdle,
     onActive,
     onPrompt,
-    timeout: idleLogoutTimeout,
+    timeout: idleLogoutTimeoutFrom(configurationProperties),
     promptBeforeIdle: idleWarningTimeout,
     crossTab: true,
     syncTimers: true,
