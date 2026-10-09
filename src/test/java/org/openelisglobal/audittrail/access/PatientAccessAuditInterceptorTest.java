@@ -84,6 +84,43 @@ public class PatientAccessAuditInterceptorTest {
     }
 
     @Test
+    public void patientPhoto_idPathVariable_isThePatient() {
+        MockHttpServletRequest request = request("GET", "/rest/patient-photos/6/true");
+        request.setAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE, Map.of("id", "6", "isThumbnail", "true"));
+
+        assertEquals(Integer.valueOf(6), recorded(request, 200).patientId());
+    }
+
+    @Test
+    public void idPathVariable_isIgnoredOutsidePatientEndpoints() {
+        MockHttpServletRequest request = request("GET", "/rest/LogbookResults");
+        request.setAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE, Map.of("id", "6"));
+
+        assertNull(recorded(request, 200).patientId());
+    }
+
+    @Test
+    public void searchAsYouType_burstIsRecordedOnceWithTheLastSearch() {
+        for (String term : List.of("T", "Te", "Tes", "Test")) {
+            for (String field : List.of("lastName", "firstName")) {
+                MockHttpServletRequest request = request("GET", "/rest/patient-search");
+                request.setQueryString(field + "=" + term);
+                interceptor.afterCompletion(request, new MockHttpServletResponse(), null, null);
+            }
+        }
+        interceptor.flushSearches(PatientAccessAuditInterceptor.SEARCH_QUIET_MILLIS);
+        verify(writer, never()).submit(any()); // still typing
+
+        interceptor.flushSearches(0);
+        ArgumentCaptor<PatientAccessRecord> captor = ArgumentCaptor.forClass(PatientAccessRecord.class);
+        verify(writer).submit(captor.capture());
+        assertEquals("firstName=Test", captor.getValue().queryString());
+
+        interceptor.flushSearches(0);
+        verify(writer).submit(any()); // and only once
+    }
+
+    @Test
     public void nonNumericPatientId_isKeptOnlyInQuery() {
         MockHttpServletRequest request = request("GET", "/rest/patient-details");
         request.setParameter("patientID", "1 OR 1=1");
