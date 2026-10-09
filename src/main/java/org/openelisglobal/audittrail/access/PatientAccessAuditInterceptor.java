@@ -1,5 +1,6 @@
 package org.openelisglobal.audittrail.access;
 
+import jakarta.annotation.PreDestroy;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -7,6 +8,10 @@ import java.sql.Timestamp;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.openelisglobal.common.action.IActionConstants;
 import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.login.valueholder.UserSessionData;
@@ -37,7 +42,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class PatientAccessAuditInterceptor implements HandlerInterceptor, WebMvcConfigurer {
 
     public static final List<String> DEFAULT_PATHS = List.of( //
-            "/rest/patient-search-results", "/rest/patient-details", "/rest/patientByLabNumer",
+            "/rest/patient-search", "/rest/patient-search-results", "/rest/patient-details", "/rest/patientByLabNumer",
             "/rest/patient-photos/**", "/rest/patient-id-documents/**", //
             "/rest/LogbookResults", "/rest/AccessionValidation", "/rest/SampleEdit", "/rest/order/search",
             "/rest/ElectronicOrders", "/rest/ReportPrint", //
@@ -51,11 +56,21 @@ public class PatientAccessAuditInterceptor implements HandlerInterceptor, WebMvc
     /** Request parameters and path variables that name a lab (accession) number. */
     static final List<String> ACCESSION_NAMES = List.of("labNumber", "accessionNumber", "accessionDirect", "accession");
 
+    /**
+     * The header's search-as-you-type box: one request per search field per
+     * keystroke. A burst is recorded once, with its last (most complete) search,
+     * after {@link #SEARCH_QUIET_MILLIS} without another search from that user.
+     */
+    static final String SEARCH_AS_YOU_TYPE = "/rest/patient-search";
+    static final long SEARCH_QUIET_MILLIS = 3000;
+
     private static final int MAX_QUERY_LENGTH = 2000;
 
     private final PatientAccessLogWriter writer;
     private final boolean enabled;
     private final List<String> paths;
+    private final Map<String, PatientAccessRecord> pendingSearches = new ConcurrentHashMap<>();
+    private ScheduledExecutorService searchFlusher;
 
     @Autowired
     public PatientAccessAuditInterceptor(PatientAccessLogWriter writer,
@@ -77,6 +92,37 @@ public class PatientAccessAuditInterceptor implements HandlerInterceptor, WebMvc
     public void addInterceptors(InterceptorRegistry registry) {
         if (enabled) {
             registry.addInterceptor(this).addPathPatterns(paths);
+            searchFlusher = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread thread = new Thread(r, "patient-search-audit");
+                thread.setDaemon(true);
+                return thread;
+            });
+            searchFlusher.scheduleWithFixedDelay(() -> flushSearches(SEARCH_QUIET_MILLIS), 1, 1, TimeUnit.SECONDS);
+        }
+    }
+
+    @PreDestroy
+    void stop() {
+        if (searchFlusher != null) {
+            searchFlusher.shutdownNow();
+        }
+        flushSearches(0);
+    }
+
+    /**
+     * Records each user's pending search once it has been quiet for
+     * {@code quietMillis}.
+     */
+    void flushSearches(long quietMillis) {
+        try {
+            long cutoff = System.currentTimeMillis() - quietMillis;
+            pendingSearches.forEach((key, record) -> {
+                if (record.accessTime().getTime() <= cutoff && pendingSearches.remove(key, record)) {
+                    writer.submit(record);
+                }
+            });
+        } catch (RuntimeException e) {
+            LogEvent.logError("Could not record patient searches", e);
         }
     }
 
@@ -87,7 +133,13 @@ public class PatientAccessAuditInterceptor implements HandlerInterceptor, WebMvc
             if (ex != null || response.getStatus() >= 400 || !isRead(request)) {
                 return;
             }
-            writer.submit(toRecord(request, response.getStatus()));
+            PatientAccessRecord record = toRecord(request, response.getStatus());
+            if (SEARCH_AS_YOU_TYPE.equals(record.resource())) {
+                // the latest keystroke replaces the earlier ones in this burst
+                pendingSearches.put(record.loginName() + "|" + record.clientAddress(), record);
+            } else {
+                writer.submit(record);
+            }
         } catch (RuntimeException e) {
             // never let auditing break the screen
             LogEvent.logError("Could not record patient access to " + request.getRequestURI(), e);
@@ -141,6 +193,10 @@ public class PatientAccessAuditInterceptor implements HandlerInterceptor, WebMvc
 
     static Integer patientId(HttpServletRequest request) {
         String value = firstValue(request, PATIENT_ID_NAMES);
+        if (value == null && resource(request).startsWith("/rest/patient-")) {
+            // e.g. /rest/patient-photos/{id}/{isThumbnail}: the id is the patient's
+            value = firstValue(request, List.of("id"));
+        }
         if (value == null || !value.matches("\\d{1,9}")) {
             return null;
         }
