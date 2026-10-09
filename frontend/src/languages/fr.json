@@ -3562,6 +3562,7 @@
   "header.icon.menu.unpin": "Désépingler le menu",
   "header.icon.notifications": "Notifications",
   "header.icon.search": "Rechercher",
+  "search.patient.noAccess": "Votre rôle ne permet pas d’ouvrir la page de ce patient. Utilisez Résultats → Par patient.",
   "header.icon.user": "Utilisateur",
   "header.label.ARV": "ARV - Bilan Initial",
   "header.label.EID": "Diagnostic pour les enfants avec DBS-PCR",
