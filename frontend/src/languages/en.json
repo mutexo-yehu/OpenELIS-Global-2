@@ -3562,7 +3562,7 @@
   "header.icon.menu.unpin": "Unpin menu",
   "header.icon.notifications": "Notifications",
   "header.icon.search": "Search",
-  "search.patient.noAccess": "Your role can't open this patient's page. Use Results → By Patient.",
+  "search.patient.noAccess": "Open from Results → By Patient",
   "header.icon.user": "User",
   "header.label.ARV": "ARV-initial",
   "header.label.EID": "Diagnostic for children with DBS-PCR",
