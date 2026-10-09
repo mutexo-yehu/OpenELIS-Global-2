@@ -97,9 +97,12 @@ export const fetchPatientData = async (
   }
 };
 
+export const patientResultsPath = (patientId?: string | number) =>
+  "/PatientResults/" + (patientId ?? "");
+
 export const openPatientResults = (patientId?: string | number) => {
   if (patientId) {
-    window.location.href = "/PatientResults/" + patientId;
+    window.location.href = patientResultsPath(patientId);
   }
 };
 

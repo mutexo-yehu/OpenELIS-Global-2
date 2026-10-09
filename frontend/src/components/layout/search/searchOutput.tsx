@@ -1,8 +1,14 @@
-import React from "react";
+import React, { useContext } from "react";
 import { Grid, Column, Section, Tag } from "@carbon/react";
-import { FormattedMessage } from "react-intl";
+import { FormattedMessage, useIntl } from "react-intl";
 import AsyncAvatar from "../../patient/photoManagement/photoAvatar/AyncAvatar";
-import { openPatientResults, type PatientSearchResult } from "./searchService";
+import UserSessionDetailsContext from "../../../UserSessionDetailsContext";
+import { canOpen } from "../../security/routeAccess";
+import {
+  openPatientResults,
+  patientResultsPath,
+  type PatientSearchResult,
+} from "./searchService";
 
 interface SearchOutputProps {
   patientData: PatientSearchResult[];
@@ -14,16 +20,36 @@ const SearchOutput: React.FC<SearchOutputProps> = ({
   patientData,
   className = "patientHead",
 }) => {
+  const intl = useIntl();
+  const { userSessionDetails } = useContext(UserSessionDetailsContext);
   return (
     <div>
       {patientData.map((patient) => {
+        // the patient page is guarded (Reception); don't offer a link that would be refused
+        const opensPatient = canOpen(
+          patientResultsPath(patient.patientID),
+          userSessionDetails,
+        );
         return (
           <Column lg={16} md={8} sm={4} key={patient.id ?? patient.patientID}>
             <Section>
               <div>
                 <Grid
-                  className={className}
-                  onClick={() => openPatientResults(patient.patientID)}
+                  className={
+                    opensPatient
+                      ? className
+                      : `${className} patientHead-readonly`
+                  }
+                  onClick={
+                    opensPatient
+                      ? () => openPatientResults(patient.patientID)
+                      : undefined
+                  }
+                  title={
+                    opensPatient
+                      ? undefined
+                      : intl.formatMessage({ id: "search.patient.noAccess" })
+                  }
                 >
                   <Column lg={2} md={1}>
                     <div role="img">

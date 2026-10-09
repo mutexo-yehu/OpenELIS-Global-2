@@ -7,7 +7,8 @@ import { confirmAlert } from "react-confirm-alert";
 import "react-confirm-alert/src/react-confirm-alert.css"; // Import css
 import { Loading, Modal } from "@carbon/react/";
 import config from "../../config.json";
-import { Roles, hasPermission } from "../utils/Utils";
+import { Roles } from "../utils/Utils";
+import { accessAllowed } from "./accessAllowed";
 import { FormattedMessage, useIntl } from "react-intl";
 
 const idleWarningTimeout = 1000 * 60; // milliseconds until logout is automatically processed from idle warning
@@ -84,34 +85,9 @@ function SecureRoute(props) {
     }
   }, [userSessionDetails, errorLoadingSessionDetails, location.pathname]);
 
-  const routeAccessAllowed = (userDetails = userSessionDetails) => {
-    // role and permission are OR'd: either grants access. With neither prop,
-    // any authenticated user passes (existing behavior).
-    var roleMatches = props.role
-      ? []
-          .concat(props.role)
-          .some((role) => userDetails.roles && userDetails.roles.includes(role))
-      : !props.permission;
-    var hasRole = roleMatches || hasPermission(userDetails, props.permission);
-    var containsLabUnitRole = false;
-    if (props.labUnitRole) {
-      Object.keys(props.labUnitRole).forEach((labunit) => {
-        if (userDetails.userLabRolesMap) {
-          const userRoles = userDetails.userLabRolesMap["AllLabUnits"]
-            ? userDetails.userLabRolesMap["AllLabUnits"]
-            : userDetails.userLabRolesMap[labunit] || [];
-          const roles = props.labUnitRole[labunit];
-          roles.forEach((r) => {
-            if (userRoles.includes(r)) {
-              containsLabUnitRole = true;
-            }
-          });
-        }
-      });
-    }
-    var hasLabUnitRole = !props.labUnitRole || containsLabUnitRole;
-    return hasRole && hasLabUnitRole;
-  };
+  // shared with the side menu, which hides the pages this would refuse
+  const routeAccessAllowed = (userDetails = userSessionDetails) =>
+    accessAllowed(props, userDetails);
 
   const onIdle = () => {
     setStillThereOpen(false);

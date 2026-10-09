@@ -50,7 +50,20 @@ Object.defineProperty(window, "localStorage", { value: localStorageMock });
 // Test configuration
 const mockUserSessionDetails = {
   authenticated: true,
-  roles: ["ROLE_USER"],
+  // the menu hides pages the user's roles can't open; these tests are about
+  // the menu's structure, so the user holds every role
+  roles: [
+    "Global Administrator",
+    "User Account Administrator",
+    "Audit Trail",
+    "Analyser Import",
+    "Cytopathologist",
+    "Pathologist",
+    "Reception",
+    "Results",
+    "Validation",
+    "Reports",
+  ],
   userId: "1",
   firstName: "Test",
   lastName: "User",
@@ -616,6 +629,17 @@ describe("Header Component - M2b Enhancement Tests", () => {
         const searchIcon = container.querySelector("#search-Icon");
         expect(searchIcon).toBeTruthy();
       });
+    });
+
+    test("search icon is hidden for roles that don't work from a patient", async () => {
+      const { container } = renderHeader({
+        sessionDetails: { ...mockUserSessionDetails, roles: ["Reports"] },
+      });
+
+      await waitFor(() => {
+        expect(container.querySelector("#notification-Icon")).toBeTruthy();
+      });
+      expect(container.querySelector("#search-Icon")).toBeNull();
     });
 
     test("notification icon is visible when authenticated", async () => {

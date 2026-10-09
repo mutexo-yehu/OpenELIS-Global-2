@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useContext, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useIntl } from "react-intl";
 import {
@@ -10,6 +10,8 @@ import {
 import { useMenuAutoExpand } from "./useMenuAutoExpand";
 import { canonicalReportingUrl } from "../reports/CustomDataExport/routes";
 import { reportingMenuDestination } from "../reports/CustomDataExport/useReportingRoute";
+import UserSessionDetailsContext from "../../UserSessionDetailsContext";
+import { filterMenusByAccess } from "../security/routeAccess";
 
 import { navigationIcons as icons } from "./navigationIcons";
 
@@ -36,6 +38,9 @@ export function canonicalMenuUrl(url) {
 export default function ConfiguredSideNav({ menus, unifiedResultsOn }) {
   const intl = useIntl();
   const location = useLocation();
+  const userSessionDetails = useContext(
+    UserSessionDetailsContext,
+  )?.userSessionDetails;
   const visibleMenus = useMemo(() => {
     const filter = (items) =>
       items
@@ -53,8 +58,13 @@ export default function ConfiguredSideNav({ menus, unifiedResultsOn }) {
           },
           childMenus: filter(item.childMenus || []),
         }));
-    return filter(menus || []);
-  }, [menus, unifiedResultsOn]);
+    const configured = filter(menus || []);
+    // hide pages the user's roles can't open (SecureRoute would refuse them);
+    // until the session's roles are known, show the menu as configured
+    return Array.isArray(userSessionDetails?.roles)
+      ? filterMenusByAccess(configured, userSessionDetails)
+      : configured;
+  }, [menus, unifiedResultsOn, userSessionDetails]);
   const expandedMenus = useMenuAutoExpand(visibleMenus);
   const label = (key) => intl.formatMessage({ id: key, defaultMessage: key });
 

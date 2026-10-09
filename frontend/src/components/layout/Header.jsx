@@ -37,6 +37,7 @@ import {
 import SlideOverNotifications from "../notifications/SlideOverNotifications";
 import { getFromOpenElisServer, putToOpenElisServer } from "../utils/Utils";
 import SearchBar from "./search/searchBar";
+import { canSearchPatients } from "../security/routeAccess";
 import { getBranding } from "../utils/BrandingUtils";
 import config from "../../config.json";
 
@@ -347,16 +348,26 @@ function OEHeader({
             <HeaderGlobalBar>
               {userSessionDetails.authenticated && (
                 <>
-                  {searchBar && <SearchBar />}
-                  <HeaderGlobalAction
-                    id="search-Icon"
-                    aria-label={intl.formatMessage({
-                      id: "header.icon.search",
-                    })}
-                    onClick={() => handlePanelToggle(searchBar ? "" : "search")}
-                  >
-                    {!searchBar ? <Search size={20} /> : <Close size={20} />}
-                  </HeaderGlobalAction>
+                  {canSearchPatients(userSessionDetails) && (
+                    <>
+                      {searchBar && <SearchBar />}
+                      <HeaderGlobalAction
+                        id="search-Icon"
+                        aria-label={intl.formatMessage({
+                          id: "header.icon.search",
+                        })}
+                        onClick={() =>
+                          handlePanelToggle(searchBar ? "" : "search")
+                        }
+                      >
+                        {!searchBar ? (
+                          <Search size={20} />
+                        ) : (
+                          <Close size={20} />
+                        )}
+                      </HeaderGlobalAction>
+                    </>
+                  )}
                   <HeaderGlobalAction
                     id="notification-Icon"
                     aria-label={intl.formatMessage({

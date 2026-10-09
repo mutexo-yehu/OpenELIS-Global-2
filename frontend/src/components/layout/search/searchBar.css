@@ -36,6 +36,12 @@
   cursor: pointer;
 }
 
+/* a match the user's roles can't open (see searchOutput.tsx) */
+.patientHead.patientHead-readonly:hover {
+  background-color: #fcfbfb;
+  cursor: default;
+}
+
 .patient-name-search {
   font-size: 18px;
   font-weight: bold;
