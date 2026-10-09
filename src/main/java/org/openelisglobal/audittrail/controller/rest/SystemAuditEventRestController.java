@@ -47,7 +47,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'AUDIT_TRAIL')")
 public class SystemAuditEventRestController {
 
     private static final int MAX_EXPORT_ROWS = PdfExportSupport.MAX_EXPORT_ROWS;

@@ -39,6 +39,7 @@ import org.openelisglobal.search.service.SearchResultsService;
 import org.openelisglobal.spring.util.SpringContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -157,6 +158,10 @@ public class PatientSearchRestController extends BaseRestController {
         }
     }
 
+    // the header search box: roles that work from a patient (as the header shows
+    // it)
+    @PreAuthorize("hasAnyRole('GLOBAL_ADMIN', 'RECEPTION', 'RESULTS', 'VALIDATION', 'PATHOLOGIST',"
+            + " 'CYTOPATHOLOGIST')")
     @GetMapping("/patient-search")
     public @ResponseBody List<PatientSearchResults> getSearchResults(@RequestParam(required = false) String lastName,
             @RequestParam(required = false) String firstName, @RequestParam(required = false) String STNumber,

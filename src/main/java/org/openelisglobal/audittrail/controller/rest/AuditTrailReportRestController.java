@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'AUDIT_TRAIL')")
 public class AuditTrailReportRestController {
 
     private static final String ACCESSION_PATTERN = "^[a-zA-Z0-9\\-]+$";

@@ -194,6 +194,11 @@ export const ANALYZER_RESULTS_ROLES = [
   Roles.ANALYSER_IMPORT,
 ];
 
+// Who may open the QC screens: the roles their REST endpoints admit (/rest/qc is
+// ANALYSER_IMPORT or ADMIN). These routes named Roles.LAB_SUPERVISOR, which is not
+// defined, so they had no guard and showed every user screens the server refused.
+export const QC_ROLES = [Roles.GLOBAL_ADMIN, Roles.ANALYSER_IMPORT];
+
 // The quality-indicator reports: same route shape, same roles, each gated on its
 // own indicator being enabled.
 const QI_INDICATOR_ROUTES = [
@@ -501,6 +506,7 @@ export default function App() {
                   exact
                   render={() => <CytologyDashboard />}
                   role=""
+                  labUnitRole={{ Cytology: [Roles.RESULTS] }}
                 />
                 <SecureRoute
                   path="/genericProgram"
@@ -1131,13 +1137,13 @@ export default function App() {
                   path="/qa/qc/reagent-qc"
                   exact
                   component={() => <QAPlaceholder feature="reagent-qc" />}
-                  role={Roles.LAB_SUPERVISOR}
+                  role={QC_ROLES}
                 />
                 <SecureRoute
                   path="/qa/qc/manual-qc"
                   exact
                   component={() => <QAPlaceholder feature="manual-qc" />}
-                  role={Roles.LAB_SUPERVISOR}
+                  role={QC_ROLES}
                 />
                 {/* QA v1 MVP (OGC-695/696): QI Dashboard replaces the pillar
                     placeholder; the pillar menu entry is now expand-only. */}
@@ -1208,7 +1214,7 @@ export default function App() {
                   path="/qa/qms/audit-trail"
                   exact
                   component={() => <AuditTrailReportIndex />}
-                  role={Roles.GLOBAL_ADMIN}
+                  role={[Roles.GLOBAL_ADMIN, Roles.AUDIT_TRAIL]}
                 />
                 <SecureRoute
                   path="/qa/qms/e-signature-log"
@@ -1244,13 +1250,13 @@ export default function App() {
                   path="/qa/qc/reagent-qc"
                   exact
                   render={() => <QAPlaceholder feature="reagent-qc" />}
-                  role={Roles.LAB_SUPERVISOR}
+                  role={QC_ROLES}
                 />
                 <SecureRoute
                   path="/qa/qc/manual-qc"
                   exact
                   render={() => <QAPlaceholder feature="manual-qc" />}
-                  role={Roles.LAB_SUPERVISOR}
+                  role={QC_ROLES}
                 />
                 {/* QA v1 MVP (OGC-695/696): QI Dashboard replaces the pillar
                     placeholder; the pillar menu entry is now expand-only. */}
@@ -1292,7 +1298,7 @@ export default function App() {
                   path="/qa/qms/audit-trail"
                   exact
                   render={() => <AuditTrailReportIndex />}
-                  role={Roles.GLOBAL_ADMIN}
+                  role={[Roles.GLOBAL_ADMIN, Roles.AUDIT_TRAIL]}
                 />
                 <SecureRoute
                   path="/qa/qms/e-signature-log"
@@ -1440,14 +1446,14 @@ export default function App() {
                   path="/analyzers/qc/instruments/:instrumentId"
                   exact
                   render={() => <InstrumentDetailPage />}
-                  role={Roles.LAB_SUPERVISOR}
+                  role={QC_ROLES}
                 />
                 {/* QA v0.5 IA rehome (OGC-689): QC pages moved to /qa/qc/* */}
                 <SecureRoute
                   path="/qa/qc/dashboard"
                   exact
                   render={() => <QCDashboard />}
-                  role={Roles.LAB_SUPERVISOR}
+                  role={QC_ROLES}
                 />
                 {/* QA v0.5 IA rehome (OGC-689): QC pages moved to /qa/qc/* */}
                 <Redirect exact from="/analyzers/qc/db" to="/qa/qc/dashboard" />
@@ -1455,19 +1461,19 @@ export default function App() {
                   path="/qa/qc/dashboard"
                   exact
                   render={() => <QCDashboard initialTab={1} />}
-                  role={Roles.LAB_SUPERVISOR}
+                  role={QC_ROLES}
                 />
                 <SecureRoute
                   path="/qa/qc/alerts"
                   exact
                   component={() => <QCDashboard initialTab={1} />}
-                  role={Roles.LAB_SUPERVISOR}
+                  role={QC_ROLES}
                 />
                 <SecureRoute
                   path="/analyzers/qc/charts/:analyzerId"
                   exact
                   render={() => <ControlChartDetail />}
-                  role={Roles.LAB_SUPERVISOR}
+                  role={QC_ROLES}
                 />
                 <Redirect
                   exact
@@ -1478,19 +1484,19 @@ export default function App() {
                   path="/qa/qc/control-lots"
                   exact
                   render={() => <ControlLotList />}
-                  role={Roles.LAB_SUPERVISOR}
+                  role={QC_ROLES}
                 />
                 <SecureRoute
                   path="/analyzers/qc/control-lots/new"
                   exact
                   render={() => <ControlLotSetup />}
-                  role={Roles.LAB_SUPERVISOR}
+                  role={QC_ROLES}
                 />
                 <SecureRoute
                   path="/analyzers/qc/control-lots/:id"
                   exact
                   render={() => <ControlLotSetup />}
-                  role={Roles.LAB_SUPERVISOR}
+                  role={QC_ROLES}
                 />
                 <Redirect
                   exact
@@ -1501,7 +1507,7 @@ export default function App() {
                   path="/qa/qc/rule-config"
                   exact
                   render={() => <RuleConfigPanel />}
-                  role={Roles.LAB_SUPERVISOR}
+                  role={QC_ROLES}
                 />
                 <SecureRoute
                   path="/PatientHistory"
