@@ -27,7 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
  * lab numbers rather than the patient.
  */
 @RestController
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'AUDIT_TRAIL')")
 public class PatientAccessLogRestController {
 
     private static final int MAX_EXPORT_ROWS = 10_000;
