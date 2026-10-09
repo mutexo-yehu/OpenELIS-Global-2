@@ -32,6 +32,7 @@ import org.openelisglobal.security.login.CustomAuthenticationFailureHandler;
 import org.openelisglobal.security.login.CustomFormAuthenticationSuccessHandler;
 import org.openelisglobal.security.login.CustomSSOAuthenticationSuccessHandler;
 import org.openelisglobal.security.login.CustomUserDetailsService;
+import org.openelisglobal.security.login.LocalLoginPolicy;
 import org.openelisglobal.spring.util.SpringContext;
 import org.opensaml.core.xml.XMLObject;
 import org.opensaml.core.xml.schema.XSString;
@@ -131,6 +132,9 @@ public class SecurityConfig {
 
     @Autowired
     private UserDetailsService userDetailsService;
+
+    @Autowired
+    private LocalLoginPolicy localLoginPolicy;
 
     @Autowired
     public void configureGlobalSecurity(AuthenticationManagerBuilder auth) throws Exception {
@@ -526,6 +530,9 @@ public class SecurityConfig {
         DaoAuthenticationProvider authenticationProvider = new DaoAuthenticationProvider();
         authenticationProvider.setUserDetailsService(userDetailsService);
         authenticationProvider.setPasswordEncoder(passwordEncoder());
+        // form login and HTTP Basic both authenticate here; limit them to the
+        // org.itech.login.local.allowedUsers accounts when that is set
+        authenticationProvider.setPreAuthenticationChecks(localLoginPolicy.preAuthenticationChecks());
         return authenticationProvider;
     }
 

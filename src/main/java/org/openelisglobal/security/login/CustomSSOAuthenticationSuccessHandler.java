@@ -64,6 +64,11 @@ public class CustomSSOAuthenticationSuccessHandler extends SavedRequestAwareAuth
 
     public static final int DEFAULT_SESSION_TIMEOUT_IN_MINUTES = 20;
 
+    // inactivity before the server session ends (SSO users have no per-user
+    // timeout)
+    @Value("${org.openelisglobal.session.timeout.minutes:20}")
+    private int sessionTimeoutMinutes;
+
     public CustomSSOAuthenticationSuccessHandler() {
         super();
     }
@@ -205,7 +210,7 @@ public class CustomSSOAuthenticationSuccessHandler extends SavedRequestAwareAuth
         // } else {
         // timeout = DEFAULT_SESSION_TIMEOUT_IN_MINUTES * 60;
         // }
-        request.getSession().setMaxInactiveInterval(DEFAULT_SESSION_TIMEOUT_IN_MINUTES * 60);
+        request.getSession().setMaxInactiveInterval(sessionTimeoutMinutes * 60);
 
         // get system user and link to login user
         // SystemUser su =
@@ -238,7 +243,7 @@ public class CustomSSOAuthenticationSuccessHandler extends SavedRequestAwareAuth
         usd.setLoginName(principal.getName());
         // usd.setElisUserName(su.getNameForDisplay());
         usd.setElisUserName(principal.getName());
-        usd.setUserTimeOut(DEFAULT_SESSION_TIMEOUT_IN_MINUTES * 60);
+        usd.setUserTimeOut(sessionTimeoutMinutes * 60);
         usd.setAdmin(isAdmin);
         request.getSession().setAttribute(IActionConstants.USER_SESSION_DATA, usd);
         request.getSession().setAttribute("timezone", timezone);
@@ -262,7 +267,7 @@ public class CustomSSOAuthenticationSuccessHandler extends SavedRequestAwareAuth
                 isAdmin = "admin".equalsIgnoreCase(authorityExplode[1]);
             }
         }
-        request.getSession().setMaxInactiveInterval(DEFAULT_SESSION_TIMEOUT_IN_MINUTES * 60);
+        request.getSession().setMaxInactiveInterval(sessionTimeoutMinutes * 60);
 
         UserSessionData usd = new UserSessionData();
         Optional<SystemUser> user = systemUserService.getMatch("loginName", principal.getName());
@@ -284,7 +289,7 @@ public class CustomSSOAuthenticationSuccessHandler extends SavedRequestAwareAuth
         usd.setLoginName(principal.getName());
         // usd.setElisUserName(su.getNameForDisplay());
         usd.setElisUserName(principal.getName());
-        usd.setUserTimeOut(DEFAULT_SESSION_TIMEOUT_IN_MINUTES * 60);
+        usd.setUserTimeOut(sessionTimeoutMinutes * 60);
         usd.setAdmin(isAdmin);
         request.getSession().setAttribute("authorities", usd);
         request.getSession().setAttribute(IActionConstants.USER_SESSION_DATA, usd);

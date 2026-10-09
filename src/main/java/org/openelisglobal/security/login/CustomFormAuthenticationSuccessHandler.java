@@ -58,6 +58,11 @@ public class CustomFormAuthenticationSuccessHandler extends SavedRequestAwareAut
 
     public static final int DEFAULT_SESSION_TIMEOUT_IN_MINUTES = 20;
 
+    // inactivity before the server session ends, for users without their own
+    // timeout
+    @Value("${org.openelisglobal.session.timeout.minutes:20}")
+    private int sessionTimeoutMinutes;
+
     public CustomFormAuthenticationSuccessHandler() {
         super();
     }
@@ -146,7 +151,7 @@ public class CustomFormAuthenticationSuccessHandler extends SavedRequestAwareAut
         if (loginInfo.getUserTimeOut() != null) {
             timeout = Integer.parseInt(loginInfo.getUserTimeOut()) * 60;
         } else {
-            timeout = DEFAULT_SESSION_TIMEOUT_IN_MINUTES * 60;
+            timeout = sessionTimeoutMinutes * 60;
         }
         request.getSession().setMaxInactiveInterval(timeout);
 
@@ -158,7 +163,7 @@ public class CustomFormAuthenticationSuccessHandler extends SavedRequestAwareAut
         usd.setSytemUserId(loginInfo.getSystemUserId());
         usd.setLoginName(loginInfo.getLoginName());
         usd.setElisUserName(su.getNameForDisplay());
-        usd.setUserTimeOut(timeout * 60);
+        usd.setUserTimeOut(timeout); // already in seconds
         usd.setAdmin(loginService.isUserAdmin(loginInfo));
         request.getSession().setAttribute(IActionConstants.USER_SESSION_DATA, usd);
         request.getSession().setAttribute("timezone", timezone);
