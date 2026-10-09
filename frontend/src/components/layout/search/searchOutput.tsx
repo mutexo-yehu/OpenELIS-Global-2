@@ -89,6 +89,11 @@ const SearchOutput: React.FC<SearchOutputProps> = ({
                         <FormattedMessage id="patient.natioanalid" /> :{" "}
                         <strong>{patient.nationalId}</strong>
                       </Tag>
+                      {!opensPatient && (
+                        <Tag size="md" type="gray">
+                          <FormattedMessage id="search.patient.noAccess" />
+                        </Tag>
+                      )}
                       {/* <Tag size="md" type="blue">
                         <FormattedMessage id="patient.subject.number" /> :{" "}
                         <strong>{patient.subjectNumber}</strong>
