@@ -82,6 +82,7 @@ import org.openelisglobal.referral.valueholder.ReferralResult;
 import org.openelisglobal.reports.action.implementation.reportBeans.ClinicalPatientData;
 import org.openelisglobal.reports.form.ReportForm;
 import org.openelisglobal.reports.form.ReportForm.DateType;
+import org.openelisglobal.result.action.util.CorrectionNotes;
 import org.openelisglobal.result.service.ResultService;
 import org.openelisglobal.result.valueholder.Result;
 import org.openelisglobal.resultlimit.service.ResultLimitService;
@@ -685,11 +686,24 @@ public abstract class PatientReport extends Report {
         data.setResult(MessageUtil.getMessage("report.test.status.inProgress"));
     }
 
+    /**
+     * An amended report says so on every copy (ISO 15189), not only on the first
+     * print after the correction: a result counts as corrected while it carries the
+     * "Result corrected" note. The corrected-since-report flag still records that
+     * this print is the first one after the correction.
+     */
     private void setCorrectedStatus(Result result, ClinicalPatientData data) {
-        if (currentAnalysis.isCorrectedSincePatientReport() && !GenericValidator.isBlankOrNull(result.getValue())) {
+        if (GenericValidator.isBlankOrNull(result.getValue())) {
+            return;
+        }
+        boolean correctedSinceLastPrint = currentAnalysis.isCorrectedSincePatientReport();
+        if (correctedSinceLastPrint || CorrectionNotes.hasCorrectionNote(noteService.getNotes(currentAnalysis),
+                CorrectionNotes.correctedText())) {
             data.setCorrectedResult(true);
             data.setContactInfo(currentContactInfo);
             sampleCorrectedMap.put(convertToAlphaNumericDisplay(currentSample), true);
+        }
+        if (correctedSinceLastPrint) {
             currentAnalysis.setCorrectedSincePatientReport(false);
             updatedAnalysis.add(currentAnalysis);
         }
