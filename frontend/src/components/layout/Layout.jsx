@@ -6,6 +6,10 @@ import { Content, Theme } from "@carbon/react";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { getFromOpenElisServer } from "../utils/Utils";
 import {
+  dateFormattingLocale,
+  installDateLocaleDefault,
+} from "../utils/dateLocaleDefault";
+import {
   languages as defaultLanguages,
   buildLanguagesFromConfig,
 } from "../../languages";
@@ -124,6 +128,9 @@ export default function Layout(props) {
   };
 
   const fetchConfigurationProperties = (res) => {
+    installDateLocaleDefault(
+      dateFormattingLocale(res?.DEFAULT_DATE_LOCALE, res?.DEFAULT_LANG_LOCALE),
+    );
     setConfigurationProperties(res);
   };
 
