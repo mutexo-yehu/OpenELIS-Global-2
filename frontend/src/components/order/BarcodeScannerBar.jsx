@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Search, InlineNotification } from "@carbon/react";
 import { useIntl } from "react-intl";
 import { useOrderContext } from "./OrderContext";
+import CameraScanButton from "../common/CameraScanButton";
 
 /**
  * BarcodeScannerBar - Barcode/lab number search bar with inline feedback.
@@ -95,16 +96,30 @@ const BarcodeScannerBar = ({ onOrderLoaded, className = "" }) => {
 
   return (
     <div className={`barcode-scanner-bar ${className}`}>
-      <Search
-        id="order-barcode-search"
-        labelText={intl.formatMessage({ id: "barcode.scan" })}
-        placeholder={intl.formatMessage({ id: "barcode.scan.placeholder" })}
-        value={inputValue}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        disabled={isLoading}
-        size="lg"
-      />
+      <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Search
+            id="order-barcode-search"
+            labelText={intl.formatMessage({ id: "barcode.scan" })}
+            placeholder={intl.formatMessage({
+              id: "barcode.scan.placeholder",
+            })}
+            value={inputValue}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            disabled={isLoading}
+            size="lg"
+          />
+        </div>
+        <CameraScanButton
+          id="order-barcode-search"
+          disabled={isLoading}
+          onDetected={(code) => {
+            setInputValue(code);
+            handleSearch(code);
+          }}
+        />
+      </div>
       {feedback && (
         <InlineNotification
           className="barcode-feedback"
