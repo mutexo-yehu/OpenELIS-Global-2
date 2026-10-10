@@ -65,6 +65,7 @@ public final class ClinicalPatientData {
     private String patientSiteNumber;
     private Boolean abnormalResult = Boolean.FALSE;
     private String collectionDateTime;
+    private String validatedBy;
     private boolean correctedResult = false;
     private Result parentResult;
     private boolean parentMarker = false;
@@ -135,6 +136,7 @@ public final class ClinicalPatientData {
         patientSiteNumber = data.getPatientSiteNumber();
         abnormalResult = data.getAbnormalResult();
         collectionDateTime = data.getCollectionDateTime();
+        validatedBy = data.getValidatedBy();
         correctedResult = data.isCorrectedResult();
         parentResult = data.getParentResult();
         parentMarker = data.getParentMarker();
@@ -532,6 +534,15 @@ public final class ClinicalPatientData {
 
     public void setCollectionDateTime(String collectionDateTime) {
         this.collectionDateTime = collectionDateTime;
+    }
+
+    /** Who validated this order's results, for the report's "Validated by" line. */
+    public String getValidatedBy() {
+        return validatedBy;
+    }
+
+    public void setValidatedBy(String validatedBy) {
+        this.validatedBy = validatedBy;
     }
 
     public boolean isCorrectedResult() {
