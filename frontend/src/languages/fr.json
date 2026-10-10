@@ -1,4 +1,10 @@
 {
+  "camera.scan": "Scanner avec la caméra",
+  "camera.scan.error": "Impossible de démarrer la caméra.",
+  "camera.scan.error.busy": "La caméra est utilisée par une autre application.",
+  "camera.scan.error.denied": "L'accès à la caméra a été refusé. Autorisez la caméra pour ce site dans les paramètres du navigateur.",
+  "camera.scan.error.noCamera": "Aucune caméra adaptée n'a été trouvée sur cet appareil.",
+  "camera.scan.hint": "Placez le code-barres de l'étiquette dans le cadre. Il est lu automatiquement.",
   "reporting.title": "Custom Data Export",
   "reporting.description": "Choose your report, reporting period and columns, then download a spreadsheet-ready CSV.",
   "reporting.builder": "Back to report builder",

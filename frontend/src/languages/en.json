@@ -1,4 +1,10 @@
 {
+  "camera.scan": "Scan with camera",
+  "camera.scan.error": "The camera could not be started.",
+  "camera.scan.error.busy": "The camera is being used by another app.",
+  "camera.scan.error.denied": "Camera access was refused. Allow the camera for this site in the browser settings.",
+  "camera.scan.error.noCamera": "No suitable camera was found on this device.",
+  "camera.scan.hint": "Hold the label's barcode inside the frame. It is read automatically.",
   "reporting.title": "Custom Data Export",
   "reporting.description": "Choose your report, reporting period and columns, then download a spreadsheet-ready CSV.",
   "reporting.builder": "Back to report builder",
