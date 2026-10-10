@@ -175,6 +175,8 @@ public class PatientCILNSPClinical_vreduit extends PatientReport implements IRep
             }
         }
         setCollectionTime(sampleSet, currentSampleReportItems, true);
+        String validatedBy = ReportValidators.describe(filteredAnalysisList);
+        currentSampleReportItems.forEach(item -> item.setValidatedBy(validatedBy));
     }
 
     @Override
