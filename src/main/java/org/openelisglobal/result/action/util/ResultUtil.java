@@ -400,6 +400,10 @@ public class ResultUtil {
                 }
             }
 
+            boolean reportDone = analysisService.patientReportHasBeenDone(analysis);
+            // what the patient report showed, read before this save replaces it
+            String previousValue = reportDone ? CorrectionNotes.reportedValueOf(analysis) : "";
+
             ResultSaveBean bean = ResultSaveBeanAdapter.fromTestResultItem(testResultItem);
             ResultSaveService resultSaveService = new ResultSaveService(analysis,
                     ControllerUtills.getSysUserId(request));
@@ -407,8 +411,7 @@ public class ResultUtil {
             List<Result> results = resultSaveService.createResultsFromTestResultItem(bean,
                     actionDataSet.getDeletableResults());
 
-            boolean correctedSinceReport = resultSaveService.isUpdatedResult()
-                    && analysisService.patientReportHasBeenDone(analysis);
+            boolean correctedSinceReport = resultSaveService.isUpdatedResult() && reportDone;
             if (correctedFlagComputedIds.add(analysis.getId())) {
                 analysis.setCorrectedSincePatientReport(correctedSinceReport);
             } else if (correctedSinceReport) {
@@ -423,6 +426,18 @@ public class ResultUtil {
                     actionDataSet.addToNoteList(scopedToComponent(noteService.createSavableNote(analysis,
                             NoteType.EXTERNAL, MessageUtil.getMessage("note.corrected.result"), RESULT_SUBJECT,
                             ControllerUtills.getSysUserId(request)), testResultItem));
+                }
+            }
+
+            // ISO 15189 amended report: the replaced value and who replaced it, printed
+            // with the result on every later copy of the report
+            if (correctedSinceReport && !GenericValidator.isBlankOrNull(previousValue)) {
+                String sysUserId = ControllerUtills.getSysUserId(request);
+                Note previous = noteService.createSavableNote(analysis, NoteType.EXTERNAL,
+                        CorrectionNotes.previouslyReported(previousValue, CorrectionNotes.userName(sysUserId)),
+                        RESULT_SUBJECT, sysUserId);
+                if (!noteService.duplicateNoteExists(previous)) {
+                    actionDataSet.addToNoteList(scopedToComponent(previous, testResultItem));
                 }
             }
 

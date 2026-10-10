@@ -40,6 +40,7 @@ import org.openelisglobal.referencetables.service.ReferenceTablesService;
 import org.openelisglobal.reports.service.DocumentTrackService;
 import org.openelisglobal.reports.service.DocumentTypeService;
 import org.openelisglobal.reports.valueholder.DocumentTrack;
+import org.openelisglobal.result.action.util.CorrectionNotes;
 import org.openelisglobal.result.action.util.ResultSet;
 import org.openelisglobal.result.valueholder.Result;
 import org.openelisglobal.resultvalidation.action.util.ResultValidationPaging;
@@ -1288,16 +1289,29 @@ public class AccessionValidationRestController extends BaseResultValidationContr
     private List<Result> createResultFromAnalysisItem(AnalysisItem analysisItem, Analysis analysis, Analysis analysis2,
             List<Note> noteUpdateList, List<Result> deletableList) {
 
+        boolean reportDone = analysisService.patientReportHasBeenDone(analysis);
+        // what the patient report showed, read before this save replaces it
+        String previousValue = reportDone ? CorrectionNotes.reportedValueOf(analysis) : "";
         ResultSaveBean bean = ResultSaveBeanAdapter.fromAnalysisItem(analysisItem);
         ResultSaveService resultSaveService = new ResultSaveService(analysis, getSysUserId(request));
         List<Result> results = resultSaveService.createResultsFromTestResultItem(bean, deletableList);
-        if (analysisService.patientReportHasBeenDone(analysis) && resultSaveService.isUpdatedResult()) {
+        if (reportDone && resultSaveService.isUpdatedResult()) {
             Note note = noteService.createSavableNote(analysis, NoteType.EXTERNAL,
                     MessageUtil.getMessage("note.corrected.result"), RESULT_SUBJECT, getSysUserId(request));
             if (!noteService.duplicateNoteExists(note)) {
                 analysis.setCorrectedSincePatientReport(true);
                 noteUpdateList.add(noteService.createSavableNote(analysis, NoteType.EXTERNAL,
                         MessageUtil.getMessage("note.corrected.result"), RESULT_SUBJECT, getSysUserId(request)));
+            }
+            // ISO 15189 amended report: the replaced value and who replaced it
+            if (!isBlankOrNull(previousValue)) {
+                Note previous = noteService.createSavableNote(analysis, NoteType.EXTERNAL,
+                        CorrectionNotes.previouslyReported(previousValue,
+                                CorrectionNotes.userName(getSysUserId(request))),
+                        RESULT_SUBJECT, getSysUserId(request));
+                if (!noteService.duplicateNoteExists(previous)) {
+                    noteUpdateList.add(previous);
+                }
             }
         }
         return results;
