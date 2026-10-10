@@ -15,7 +15,9 @@ package org.openelisglobal.reports.action.implementation;
 
 import jakarta.annotation.PostConstruct;
 import java.sql.Date;
+import java.sql.Timestamp;
 import java.text.DecimalFormat;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -719,6 +721,22 @@ public abstract class PatientReport extends Report {
     }
 
     // thread safe implementation
+    /**
+     * The order (request) date as printed. Order entry captures the request date
+     * without a time, so it is stored at midnight; printing that as "00:00" reads
+     * as an order placed at midnight. A time is printed only when one was recorded
+     * (e.g. an electronic order).
+     */
+    static String orderDateForDisplay(Timestamp orderedDate) {
+        if (orderedDate == null) {
+            return null;
+        }
+        if (LocalTime.MIDNIGHT.equals(orderedDate.toLocalDateTime().toLocalTime())) {
+            return DateUtil.convertTimestampToStringDate(orderedDate);
+        }
+        return DateUtil.convertTimestampToStringDateAndConfiguredHourTime(orderedDate);
+    }
+
     protected synchronized String formatTwoDecimals(Double value) {
         return twoDecimalFormat.format(value);
     }
@@ -735,9 +753,9 @@ public abstract class PatientReport extends Report {
                 if (result.getMinNormal() != null & result.getMaxNormal() != null
                         && (result.getMinNormal() != 0.0 || result.getMaxNormal() != 0.0)) {
                     if (Double.valueOf(result.getValue(true)) < result.getMinNormal()) {
-                        flag = "B";
+                        flag = ResultAlertFlags.below();
                     } else if (Double.valueOf(result.getValue(true)) > result.getMaxNormal()) {
-                        flag = "E";
+                        flag = ResultAlertFlags.above();
                     }
                 }
                 String critical = criticalAlertFlag(result);
@@ -1255,8 +1273,7 @@ public abstract class PatientReport extends Report {
             data.setTestDate(analysisService.getCompletedDateForDisplay(currentAnalysis));
             data.setSampleSortOrder(currentAnalysis.getSampleItem().getSortOrder());
             data.setOrderFinishDate(completionDate);
-            data.setOrderDate(DateUtil
-                    .convertTimestampToStringDateAndConfiguredHourTime(sampleService.getOrderedDate(currentSample)));
+            data.setOrderDate(orderDateForDisplay(sampleService.getOrderedDate(currentSample)));
             data.setSampleId(sampleService.getAccessionNumber(currentSample) + "-" + data.getSampleSortOrder());
             data.setSampleType(analysisService.getTypeOfSample(currentAnalysis).getLocalizedName());
             data.setCollectionDateTime(DateUtil.convertTimestampToStringDateAndConfiguredHourTime(
