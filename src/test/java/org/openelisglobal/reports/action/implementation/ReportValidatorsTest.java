@@ -2,11 +2,14 @@ package org.openelisglobal.reports.action.implementation;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.util.List;
 import org.junit.Test;
+import org.mockito.Mockito;
+import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.audittrail.valueholder.History;
 import org.openelisglobal.systemuser.valueholder.SystemUser;
 
@@ -40,6 +43,32 @@ public class ReportValidatorsTest {
 
         assertFalse(ReportValidators.validationEntry(List.of(resultEntry, insert), AWAITING_VALIDATION).isPresent());
         assertFalse(ReportValidators.validationEntry(null, AWAITING_VALIDATION).isPresent());
+    }
+
+    @Test
+    public void aFinalizedResultNoValidatorReleasedWasAutoValidated() {
+        Analysis atEntry = new Analysis();
+
+        assertTrue(ReportValidators.isAutoValidated(atEntry, false));
+    }
+
+    @Test
+    public void aValidatorReleaseIsNotAutoValidation() {
+        // a stub: Analysis.setReleasedDate also formats the date, which needs the
+        // application's configuration
+        Analysis released = Mockito.mock(Analysis.class);
+        Mockito.when(released.getReleasedDate()).thenReturn(Timestamp.valueOf("2026-10-10 01:01:08"));
+        Analysis legacyValidated = new Analysis();
+
+        // released by a validator (date stamped), or validated on a page that left a
+        // validation update but no release date
+        assertFalse(ReportValidators.isAutoValidated(released, false));
+        assertFalse(ReportValidators.isAutoValidated(legacyValidated, true));
+    }
+
+    @Test
+    public void autoValidatedLabelFallsBackOutsideTheApplication() {
+        assertEquals(ReportValidators.AUTO_VALIDATED_DEFAULT, ReportValidators.autoValidatedLabel());
     }
 
     @Test

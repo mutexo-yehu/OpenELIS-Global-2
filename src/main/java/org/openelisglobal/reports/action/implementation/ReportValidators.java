@@ -15,6 +15,7 @@ import org.openelisglobal.common.services.IStatusService;
 import org.openelisglobal.common.services.StatusService.AnalysisStatus;
 import org.openelisglobal.common.util.DateUtil;
 import org.openelisglobal.history.service.HistoryService;
+import org.openelisglobal.internationalization.MessageUtil;
 import org.openelisglobal.referencetables.service.ReferenceTablesService;
 import org.openelisglobal.spring.util.SpringContext;
 import org.openelisglobal.systemuser.service.SystemUserService;
@@ -28,16 +29,25 @@ import org.openelisglobal.systemuser.valueholder.SystemUser;
  * analysis update records the values it replaced, so the update that moved an
  * analysis out of Technical Acceptance (awaiting validation) is its validation,
  * and that history row's user is the validator.
+ *
+ * <p>
+ * A result finalized at entry by the auto-validation rules has no such update
+ * and no release date (every validator release stamps one), so the report says
+ * it was auto-validated instead of leaving the line blank.
  */
 public final class ReportValidators {
+
+    static final String AUTO_VALIDATED_KEY = "report.autoValidated";
+    static final String AUTO_VALIDATED_DEFAULT = "Auto-validated by rules";
 
     private ReportValidators() {
     }
 
     /**
      * "Name (dd/MM/yyyy HH:mm)" for each person who validated the finalized
-     * analyses, in validation order; several are joined with "; ". Empty when none
-     * can be found.
+     * analyses, in validation order, then "Auto-validated by rules" when any were
+     * finalized by the rules; several are joined with "; ". Empty when none can be
+     * found.
      */
     public static String describe(List<Analysis> analyses) {
         try {
@@ -49,10 +59,14 @@ public final class ReportValidators {
             HistoryService historyService = SpringContext.getBean(HistoryService.class);
 
             List<History> validations = new ArrayList<>();
+            boolean anyAutoValidated = false;
             for (Analysis analysis : analyses) {
                 if (finalized.equals(analysis.getStatusId())) {
-                    validationEntry(historyService.getHistoryByRefIdAndRefTableId(analysis.getId(), analysisTable),
-                            awaitingValidation).ifPresent(validations::add);
+                    Optional<History> validation = validationEntry(
+                            historyService.getHistoryByRefIdAndRefTableId(analysis.getId(), analysisTable),
+                            awaitingValidation);
+                    validation.ifPresent(validations::add);
+                    anyAutoValidated |= isAutoValidated(analysis, validation.isPresent());
                 }
             }
             validations.sort(Comparator.comparing(History::getTimestamp));
@@ -67,6 +81,9 @@ public final class ReportValidators {
             for (History validation : byUser.values()) {
                 lines.add(displayName(userService.get(validation.getSysUserId())) + " ("
                         + DateUtil.convertTimestampToStringDateAndConfiguredHourTime(validation.getTimestamp()) + ")");
+            }
+            if (anyAutoValidated) {
+                lines.add(autoValidatedLabel());
             }
             return String.join("; ", lines);
         } catch (RuntimeException e) {
@@ -87,6 +104,24 @@ public final class ReportValidators {
         return history.stream().filter(h -> "U".equals(h.getActivity()) && h.getChanges() != null)
                 .filter(h -> new String(h.getChanges(), StandardCharsets.UTF_8).contains(replacedStatus))
                 .max(Comparator.comparing(History::getTimestamp));
+    }
+
+    /**
+     * A finalized analysis no validator released: no release date (validator
+     * releases stamp one) and no validation update in its history.
+     */
+    static boolean isAutoValidated(Analysis finalizedAnalysis, boolean hasValidationEntry) {
+        return finalizedAnalysis.getReleasedDate() == null && !hasValidationEntry;
+    }
+
+    static String autoValidatedLabel() {
+        try {
+            String message = MessageUtil.getMessageIfPresent(AUTO_VALIDATED_KEY);
+            return GenericValidator.isBlankOrNull(message) ? AUTO_VALIDATED_DEFAULT : message.trim();
+        } catch (RuntimeException e) {
+            // no message source (e.g. outside the application context)
+            return AUTO_VALIDATED_DEFAULT;
+        }
     }
 
     static String displayName(SystemUser user) {
