@@ -98,7 +98,7 @@
 	<group name="person" isStartNewPage="true" isResetPageNumber="true" footerPosition="ForceAtBottom">
 		<groupExpression><![CDATA[$F{subjectNumber}]]></groupExpression>
 		<groupFooter>
-			<band height="80">
+			<band height="92">
 				<property name="com.jaspersoft.studio.unit.height" value="px"/>
 				<textField evaluationTime="Group" evaluationGroup="person" pattern="">
 					<reportElement x="371" y="0" width="182" height="70" isRemoveLineWhenBlank="true">
@@ -173,6 +173,14 @@
 						<font size="8"/>
 					</textElement>
 					<textFieldExpression><![CDATA[$P{labDirectorTitle}]]></textFieldExpression>
+				</textField>
+				<textField>
+					<reportElement x="0" y="78" width="553" height="12"/>
+					<textElement textAlignment="Center" verticalAlignment="Middle">
+						<font size="7" isBold="true"/>
+						<paragraph lineSpacing="Single"/>
+					</textElement>
+					<textFieldExpression><![CDATA[$R{report.endOfReport}]]></textFieldExpression>
 				</textField>
 			</band>
 		</groupFooter>
@@ -1245,15 +1253,6 @@
 		</band>
 	</pageFooter>
 	<summary>
-		<band height="16" splitType="Prevent">
-			<textField>
-				<reportElement x="0" y="4" width="552" height="12"/>
-				<textElement textAlignment="Center" verticalAlignment="Middle">
-					<font size="7" isBold="true"/>
-					<paragraph lineSpacing="Single"/>
-				</textElement>
-				<textFieldExpression><![CDATA[$R{report.endOfReport}]]></textFieldExpression>
-			</textField>
-		</band>
+		<band splitType="Stretch"/>
 	</summary>
 </jasperReport>
