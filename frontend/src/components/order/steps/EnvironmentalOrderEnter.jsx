@@ -33,8 +33,9 @@ import CollectionConditionsSection from "./sections/CollectionConditionsSection"
 import ProgramSection from "./sections/ProgramSection";
 import RequesterSection from "./sections/RequesterSection";
 import SampleTestSection from "./sections/SampleTestSection";
+import MicroOrderPreview from "./sections/MicroOrderPreview";
 import ComplianceStandardsSection from "./sections/ComplianceStandardsSection";
-import { fetchServerNow } from "../serverClock";
+import { currentLocalTime, todayLocalIso } from "../dateUtils";
 import "../order-workflow.scss";
 
 const WORKFLOW_TYPE = "environmental";
@@ -152,9 +153,10 @@ const EnvironmentalOrderEnter = () => {
 
   // Stamp collection date/time on samples that don't already have one.
   // Environmental collects date per-sample in the manifest; fall back to the
-  // server's clock so the backend always receives a valid collection date.
+  // lab's clock so the backend always receives a valid collection date.
   const buildStampedSamples = async () => {
-    const { date: todayIso, time: currentTime } = await fetchServerNow();
+    const todayIso = todayLocalIso();
+    const currentTime = currentLocalTime();
     const stamped = samples.map((s) =>
       s.sampleTypeId
         ? {
@@ -205,9 +207,11 @@ const EnvironmentalOrderEnter = () => {
     try {
       await saveOrder(false, false, stamped);
       markStepComplete("enter");
+      const savedLabNumber =
+        labNumber || orderData?.sampleOrderItems?.labNo || "";
       history.push(
-        labNumber
-          ? `/order/environmental/label?order=${encodeURIComponent(labNumber)}`
+        savedLabNumber
+          ? `/order/environmental/label?order=${encodeURIComponent(savedLabNumber)}`
           : "/order/environmental/label",
       );
     } catch (error) {
@@ -420,6 +424,14 @@ const EnvironmentalOrderEnter = () => {
           setOrderData={setOrderData}
           isReadOnly={isReadOnly && !isEditMode}
           workflowType={WORKFLOW_TYPE}
+        />
+
+        <MicroOrderPreview
+          samples={samples}
+          savedOrder={isReadOnly || isEditMode}
+          domain="ENVIRONMENTAL"
+          samplingSiteId={envFields.samplingSiteId}
+          samplingSiteName={envFields.samplingSiteName}
         />
 
         {showNceForm && labNumber && (

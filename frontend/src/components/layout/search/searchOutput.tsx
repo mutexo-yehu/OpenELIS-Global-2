@@ -4,24 +4,30 @@ import { FormattedMessage, useIntl } from "react-intl";
 import AsyncAvatar from "../../patient/photoManagement/photoAvatar/AyncAvatar";
 import UserSessionDetailsContext from "../../../UserSessionDetailsContext";
 import { canOpen } from "../../security/routeAccess";
-import {
-  openPatientResults,
-  patientResultsPath,
-  type PatientSearchResult,
-} from "./searchService";
+import { patientResultsPath, type PatientSearchResult } from "./searchService";
+import useInAppNavigation from "../../common/useInAppNavigation";
 
 interface SearchOutputProps {
   patientData: PatientSearchResult[];
   loading?: boolean;
   className?: string;
+  onSelect?: () => void;
 }
 
 const SearchOutput: React.FC<SearchOutputProps> = ({
   patientData,
   className = "patientHead",
+  onSelect,
 }) => {
   const intl = useIntl();
   const { userSessionDetails } = useContext(UserSessionDetailsContext);
+  const navigate = useInAppNavigation();
+  const openPatientResults = (patientId?: string | number) => {
+    if (patientId) {
+      onSelect?.();
+      navigate(patientResultsPath(patientId))();
+    }
+  };
   return (
     <div>
       {patientData.map((patient) => {

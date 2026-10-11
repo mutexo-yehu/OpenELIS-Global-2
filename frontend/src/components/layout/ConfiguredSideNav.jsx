@@ -15,6 +15,7 @@ import { filterMenusByAccess } from "../security/routeAccess";
 
 import { navigationIcons as icons } from "./navigationIcons";
 
+// Retired result-entry pages; their menu rows may still exist on a site.
 const legacyResults = new Set([
   "menu_results_logbook",
   "menu_results_patient",
@@ -35,7 +36,7 @@ export function canonicalMenuUrl(url) {
   return moved ? moved + reporting.slice(path.length) : reporting;
 }
 
-export default function ConfiguredSideNav({ menus, unifiedResultsOn }) {
+export default function ConfiguredSideNav({ menus }) {
   const intl = useIntl();
   const location = useLocation();
   const userSessionDetails = useContext(
@@ -45,10 +46,7 @@ export default function ConfiguredSideNav({ menus, unifiedResultsOn }) {
     const filter = (items) =>
       items
         .filter(
-          ({ menu }) =>
-            menu.isActive &&
-            (menu.elementId !== "menu_results_unified" || unifiedResultsOn) &&
-            (!legacyResults.has(menu.elementId) || !unifiedResultsOn),
+          ({ menu }) => menu.isActive && !legacyResults.has(menu.elementId),
         )
         .map((item) => ({
           ...item,
@@ -64,7 +62,7 @@ export default function ConfiguredSideNav({ menus, unifiedResultsOn }) {
     return Array.isArray(userSessionDetails?.roles)
       ? filterMenusByAccess(configured, userSessionDetails)
       : configured;
-  }, [menus, unifiedResultsOn, userSessionDetails]);
+  }, [menus, userSessionDetails]);
   const expandedMenus = useMenuAutoExpand(visibleMenus);
   const label = (key) => intl.formatMessage({ id: key, defaultMessage: key });
 
@@ -104,8 +102,12 @@ export default function ConfiguredSideNav({ menus, unifiedResultsOn }) {
         </SideNavMenu>
       );
     }
+    // A new-window item is left to the browser: a router Link would navigate
+    // the current tab.
     const internal =
-      menu.actionURL?.startsWith("/") && !menu.actionURL.startsWith("//");
+      menu.actionURL?.startsWith("/") &&
+      !menu.actionURL.startsWith("//") &&
+      !menu.openInNewWindow;
     const unavailable = !menu.actionURL;
     const Item = level === 0 ? SideNavLink : SideNavMenuItem;
     const destination = unavailable
