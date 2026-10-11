@@ -18,9 +18,9 @@ public class InternationalizationConfig {
     /**
      * A deployment's own wording, layered over the bundled messages per key:
      * message_en.properties etc. in this directory (UTF-8). Keys it doesn't name
-     * keep the bundled text, and without the directory nothing changes. The
-     * backend counterpart of the frontend's /translation/&lt;locale&gt;.json
-     * overrides, for text the server renders (reports, statuses, menus).
+     * keep the bundled text, and without the directory nothing changes. The backend
+     * counterpart of the frontend's /translation/&lt;locale&gt;.json overrides, for
+     * text the server renders (reports, statuses, menus).
      */
     static final String DEPLOYMENT_MESSAGES = "file:/var/lib/openelis-global/translation/message";
 

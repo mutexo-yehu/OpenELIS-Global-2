@@ -97,14 +97,9 @@ export const fetchPatientData = async (
   }
 };
 
+// the patient results page; the search uses it to check the user's roles can open it
 export const patientResultsPath = (patientId?: string | number) =>
   "/PatientResults/" + (patientId ?? "");
-
-export const openPatientResults = (patientId?: string | number) => {
-  if (patientId) {
-    window.location.href = patientResultsPath(patientId);
-  }
-};
 
 type UserInput = string | AutocompleteSuggestion | undefined;
 

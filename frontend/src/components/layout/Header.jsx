@@ -557,13 +557,7 @@ function OEHeader({
                     />
                   ) : (
                     <SideNavItems>
-                      <ConfiguredSideNav
-                        menus={menus.menu}
-                        unifiedResultsOn={
-                          configurationProperties?.RESULTS_ENTRY_UNIFIED_ROUTE ===
-                          "true"
-                        }
-                      />
+                      <ConfiguredSideNav menus={menus.menu} />
                     </SideNavItems>
                   )}
                 </SideNav>
