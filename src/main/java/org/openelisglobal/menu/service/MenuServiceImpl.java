@@ -10,6 +10,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.commons.validator.GenericValidator;
+import org.openelisglobal.common.action.IActionConstants;
 import org.openelisglobal.common.service.AuditableBaseObjectServiceImpl;
 import org.openelisglobal.common.util.URLUtil;
 import org.openelisglobal.common.util.UserContextHolder;
@@ -31,6 +32,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -192,7 +195,7 @@ public class MenuServiceImpl extends AuditableBaseObjectServiceImpl<Menu, String
             return menuTree;
         }
 
-        Set<String> permittedModules = userRoleService.getAllPermittedPagesForUser(sysUserId);
+        Set<String> permittedModules = permittedPages(sysUserId);
         Map<String, List<SystemModuleUrl>> urlsByPath = systemModuleUrlService.getAll().stream()
                 .collect(Collectors.groupingBy(SystemModuleUrl::getUrlPath));
         Set<String> visibleElementIds = new HashSet<>();
@@ -200,6 +203,31 @@ public class MenuServiceImpl extends AuditableBaseObjectServiceImpl<Menu, String
 
         // filterByIncludes adds ancestors, so emptied folders drop out.
         return MenuUtil.filterByIncludes(menuTree, visibleElementIds, Collections.emptySet());
+    }
+
+    /**
+     * The pages this user may open, as ModuleAuthenticationInterceptor judges them:
+     * the permissions the sign-in stored in the session (form, SSO or Basic auth),
+     * else the user's saved roles. A single sign-on user's roles come from the
+     * identity provider and are not saved, so reading saved roles alone hid pages
+     * those users can open.
+     */
+    @SuppressWarnings("unchecked")
+    Set<String> permittedPages(String sysUserId) {
+        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+        if (attributes != null) {
+            Object fromSession = attributes.getAttribute(IActionConstants.PERMITTED_ACTIONS_MAP,
+                    RequestAttributes.SCOPE_SESSION);
+            if (fromSession instanceof Set) {
+                return (Set<String>) fromSession;
+            }
+            Object fromRequest = attributes.getAttribute(IActionConstants.PERMITTED_ACTIONS_MAP,
+                    RequestAttributes.SCOPE_REQUEST);
+            if (fromRequest instanceof Set) {
+                return (Set<String>) fromRequest;
+            }
+        }
+        return userRoleService.getAllPermittedPagesForUser(sysUserId);
     }
 
     private boolean holdsAdminAuthority() {
