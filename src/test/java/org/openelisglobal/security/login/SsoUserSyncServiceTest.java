@@ -36,6 +36,8 @@ import org.openelisglobal.userrole.valueholder.UserLabUnitRoles;
 import org.openelisglobal.userrole.valueholder.UserRole;
 import org.springframework.test.util.ReflectionTestUtils;
 
+// any() appears only inside never(): "no write of any kind" is the claim being
+// tested, so the broadest matcher is the strictest check.
 @RunWith(MockitoJUnitRunner.Silent.class)
 public class SsoUserSyncServiceTest {
 
