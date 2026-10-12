@@ -54,6 +54,8 @@ public class CustomSSOAuthenticationSuccessHandler extends SavedRequestAwareAuth
     private SystemUserService systemUserService;
     @Autowired
     private RoleService roleService;
+    @Autowired
+    private SsoUserSyncService ssoUserSyncService;
 
     @Autowired
     @Qualifier("daemonSysUserId")
@@ -239,6 +241,8 @@ public class CustomSSOAuthenticationSuccessHandler extends SavedRequestAwareAuth
         } else {
             systemUser = user.get();
         }
+        syncFromIdentityProvider(principal.getName(), principal.getFirstAttribute("firstName"),
+                principal.getFirstAttribute("lastName"), authorities);
         usd.setSytemUserId(Integer.parseInt(systemUser.getId()));
         usd.setLoginName(principal.getName());
         // usd.setElisUserName(su.getNameForDisplay());
@@ -285,6 +289,8 @@ public class CustomSSOAuthenticationSuccessHandler extends SavedRequestAwareAuth
 
             systemUser = systemUserService.save(systemUser);
         }
+        syncFromIdentityProvider(principal.getName(), principal.getAttribute("given_name"),
+                principal.getAttribute("family_name"), authorities);
         usd.setSytemUserId(Integer.parseInt(systemUser.getId()));
         usd.setLoginName(principal.getName());
         // usd.setElisUserName(su.getNameForDisplay());
@@ -300,6 +306,21 @@ public class CustomSSOAuthenticationSuccessHandler extends SavedRequestAwareAuth
             Set<String> permittedPages = getPermittedForms(authorities);
             request.getSession().setAttribute(IActionConstants.PERMITTED_ACTIONS_MAP, permittedPages);
             // showAdminMenu |= permittedPages.contains("MasterList");
+        }
+    }
+
+    // Save the name and roles the identity provider sent, so what reads saved roles
+    // (pick-lists, names on reports) sees SSO users too. A failure must not block
+    // sign-in: the session roles still apply, and the next sign-in tries again.
+    private void syncFromIdentityProvider(String loginName, Object firstName, Object lastName,
+            Collection<? extends GrantedAuthority> authorities) {
+        try {
+            ssoUserSyncService.sync(loginName, firstName == null ? null : firstName.toString(),
+                    lastName == null ? null : lastName.toString(), SsoUserSyncService.authorityNames(authorities));
+        } catch (RuntimeException e) {
+            LogEvent.logError(this.getClass().getSimpleName(), "syncFromIdentityProvider",
+                    "SSO sync failed for " + loginName + "; signed in on the session roles only");
+            LogEvent.logError(e);
         }
     }
 
