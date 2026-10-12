@@ -91,6 +91,7 @@ import Avatar from "./Avatar";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import CameraScanButton from "../../common/CameraScanButton";
 import config from "../../../config.json";
 import SearchPatientForm from "../../patient/SearchPatientForm";
 import { PatientRecord } from "../../patient/types";
@@ -1365,21 +1366,34 @@ const UnifiedResults: React.FC<UnifiedResultsProps> = ({
               <div className="cds--label">
                 <FormattedMessage id="label.button.search" />
               </div>
-              <Search
-                id="unifiedResultsSearch"
-                labelText={intl.formatMessage({ id: "label.results.search" })}
-                placeholder={intl.formatMessage({ id: "label.results.search" })}
-                value={searchText}
-                disabled={Boolean(selectedPatient)}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setSearchText(e.target.value)
-                }
-                onKeyDown={(e: React.KeyboardEvent) => {
-                  if (e.key === "Enter") {
-                    loadWorklist();
+              <div className="unifiedResultsSearchRow">
+                <Search
+                  id="unifiedResultsSearch"
+                  labelText={intl.formatMessage({ id: "label.results.search" })}
+                  placeholder={intl.formatMessage({
+                    id: "label.results.search",
+                  })}
+                  value={searchText}
+                  disabled={Boolean(selectedPatient)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setSearchText(e.target.value)
                   }
-                }}
-              />
+                  onKeyDown={(e: React.KeyboardEvent) => {
+                    if (e.key === "Enter") {
+                      loadWorklist();
+                    }
+                  }}
+                />
+                {/* a camera read acts like a scanner's Enter: fill, then load */}
+                <CameraScanButton
+                  id="unifiedResultsSearch"
+                  disabled={Boolean(selectedPatient)}
+                  onDetected={(code: string) => {
+                    setSearchText(code);
+                    loadWorklist(code);
+                  }}
+                />
+              </div>
             </Column>
             <Column
               lg={3}

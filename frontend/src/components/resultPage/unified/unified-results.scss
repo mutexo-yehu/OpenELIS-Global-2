@@ -707,6 +707,19 @@
   display: block;
 }
 
+// Search box with the camera-scan button beside it (the button only shows on
+// devices with a camera, over HTTPS)
+.unifiedResultsPage .unifiedResultsSearchRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
+.unifiedResultsPage .unifiedResultsSearchRow > .cds--search {
+  flex: 1;
+  min-width: 0;
+}
+
 .unifiedResultsPage .unifiedResultsToolbarColumn .cds--btn {
   height: 2.5rem;
   min-height: 2.5rem;
