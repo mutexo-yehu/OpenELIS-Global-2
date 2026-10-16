@@ -14,7 +14,9 @@ const {
   addNotification,
   getFromOpenElisServer,
   postToOpenElisServerJsonResponse,
+  site,
 } = vi.hoisted(() => ({
+  site: { configurationProperties: { DEFAULT_DATE_LOCALE: "en-US" } },
   push: vi.fn(),
   location: { pathname: "/order/clinical", search: "" },
   loadOrder: vi.fn().mockResolvedValue(),
@@ -32,6 +34,12 @@ vi.mock("./OrderContext", () => ({
   useOrderContext: () => ({ loadOrder, resetOrder: vi.fn() }),
 }));
 vi.mock("../layout/Layout", () => ({
+  // a getter, so a test can change the site's date locale before rendering
+  ConfigurationContext: React.createContext({
+    get configurationProperties() {
+      return site.configurationProperties;
+    },
+  }),
   NotificationContext: React.createContext({
     notificationVisible: false,
     setNotificationVisible: vi.fn(),
@@ -407,6 +415,33 @@ describe("referred orders", () => {
     // that are rendered elements, so every row the server matched was hidden.
     expect(await listed("LAB-REFERRED")).toBeInTheDocument();
     expect(screen.queryByText("No orders found")).toBeNull();
+  });
+
+  it("asks for dates in the site's order: day first unless the site is en-US", async () => {
+    site.configurationProperties = { DEFAULT_DATE_LOCALE: "fr-FR" };
+    try {
+      renderDashboard();
+      await listed("LAB-ENTERED");
+      expect(document.getElementById("date-start")).toHaveAttribute(
+        "placeholder",
+        "dd/mm/yyyy",
+      );
+      expect(document.getElementById("date-end")).toHaveAttribute(
+        "placeholder",
+        "dd/mm/yyyy",
+      );
+    } finally {
+      site.configurationProperties = { DEFAULT_DATE_LOCALE: "en-US" };
+    }
+  });
+
+  it("keeps month first for a US site", async () => {
+    renderDashboard();
+    await listed("LAB-ENTERED");
+    expect(document.getElementById("date-start")).toHaveAttribute(
+      "placeholder",
+      "mm/dd/yyyy",
+    );
   });
 
   it("takes the filter labels from the message bundle", async () => {

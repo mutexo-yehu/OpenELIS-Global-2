@@ -23,6 +23,16 @@
   padding: 1.5rem;
   background-color: var(--cds-layer);
   min-height: calc(100vh - 100px);
+  // on a phone the wide orders table scrolls inside its own box instead of
+  // widening the page (which pushed the header's icons off screen)
+  min-width: 0;
+  max-width: 100%;
+
+  .cds--data-table-container {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
 
   .dashboard-header {
     display: flex;

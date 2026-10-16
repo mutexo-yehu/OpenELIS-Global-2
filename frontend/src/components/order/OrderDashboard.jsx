@@ -37,7 +37,7 @@ import {
 } from "@carbon/react";
 import { Add } from "@carbon/icons-react";
 import PageBreadCrumb from "../common/PageBreadCrumb";
-import { NotificationContext } from "../layout/Layout";
+import { ConfigurationContext, NotificationContext } from "../layout/Layout";
 import { AlertDialog, NotificationKinds } from "../common/CustomNotification";
 import {
   getFromOpenElisServer,
@@ -148,6 +148,14 @@ const OrderDashboardContent = () => {
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
   const { loadOrder, resetOrder } = useOrderContext();
+  // the date filters follow the site's date order, as the rest of the app does:
+  // day first unless the site's date locale is US English
+  const { configurationProperties } = useContext(ConfigurationContext) || {};
+  const dayFirst = !String(configurationProperties?.DEFAULT_DATE_LOCALE || "en-US")
+    .toLowerCase()
+    .startsWith("en-us");
+  const dateFormat = dayFirst ? "d/m/Y" : "m/d/Y";
+  const datePlaceholder = dayFirst ? "dd/mm/yyyy" : "mm/dd/yyyy";
 
   // State
   const [orders, setOrders] = useState([]);
@@ -837,6 +845,7 @@ const OrderDashboardContent = () => {
             <div className="dashboard-filter-item">
               <DatePicker
                 datePickerType="single"
+                dateFormat={dateFormat}
                 onChange={(dates) =>
                   applyFilter(setDateRange)((prev) => ({
                     ...prev,
@@ -846,7 +855,7 @@ const OrderDashboardContent = () => {
               >
                 <DatePickerInput
                   id="date-start"
-                  placeholder="mm/dd/yyyy"
+                  placeholder={datePlaceholder}
                   labelText={intl.formatMessage({
                     id: "order.filter.dateFrom",
                     defaultMessage: "From",
@@ -858,6 +867,7 @@ const OrderDashboardContent = () => {
             <div className="dashboard-filter-item">
               <DatePicker
                 datePickerType="single"
+                dateFormat={dateFormat}
                 onChange={(dates) =>
                   applyFilter(setDateRange)((prev) => ({
                     ...prev,
@@ -867,7 +877,7 @@ const OrderDashboardContent = () => {
               >
                 <DatePickerInput
                   id="date-end"
-                  placeholder="mm/dd/yyyy"
+                  placeholder={datePlaceholder}
                   labelText={intl.formatMessage({
                     id: "order.filter.dateTo",
                     defaultMessage: "To",
