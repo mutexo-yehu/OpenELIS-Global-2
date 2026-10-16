@@ -15,6 +15,7 @@ import {
 import { FormattedMessage, useIntl } from "react-intl";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import {
+  isEsigEnabled,
   isUserCertified,
   getSessionStatus,
   executeSignature,
@@ -61,6 +62,9 @@ const ESignatureModal = ({
   // Form state
   const [enteredUsername, setEnteredUsername] = useState("");
   const [password, setPassword] = useState("");
+  // single sign-on users also give the code from their authenticator app
+  const [otp, setOtp] = useState("");
+  const [otpRequired, setOtpRequired] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [certificationAcknowledged, setCertificationAcknowledged] =
     useState(false);
@@ -85,6 +89,7 @@ const ESignatureModal = ({
       setFlowStep("loading");
       setEnteredUsername("");
       setPassword("");
+      setOtp("");
       setRejectionReason("");
       setCertificationAcknowledged(false);
       setError(null);
@@ -97,6 +102,10 @@ const ESignatureModal = ({
     setError(null);
 
     try {
+      // whether Keycloak checks this user's signature (then a code is needed too)
+      const status = await isEsigEnabled().catch(() => null);
+      setOtpRequired(!!status?.otpRequired);
+
       // Check if user is certified (using username)
       const certStatus = await isUserCertified(userName);
 
@@ -136,6 +145,21 @@ const ESignatureModal = ({
     }
   };
 
+  // the authenticator code is required when Keycloak checks the signature;
+  // reports the error and returns true when it is missing
+  const otpMissing = () => {
+    if (otpRequired && !otp.trim()) {
+      setError(
+        intl.formatMessage({
+          id: "esig.error.otpRequired",
+          defaultMessage: "The code from your authenticator app is required",
+        }),
+      );
+      return true;
+    }
+    return false;
+  };
+
   const handleCertification = async () => {
     if (!certificationAcknowledged) {
       setError(
@@ -157,6 +181,10 @@ const ESignatureModal = ({
       return;
     }
 
+    if (otpMissing()) {
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -164,11 +192,13 @@ const ESignatureModal = ({
       await certifyUser({
         username: userName,
         password,
+        otp: otpRequired ? otp.trim() : undefined,
         certificationText: DEFAULT_CERTIFICATION_TEXT,
       });
 
-      // After certification, proceed to signature
+      // After certification, proceed to signature (a code is valid only once)
       setPassword("");
+      setOtp("");
       setFlowStep("fullAuth");
     } catch (err) {
       handleApiError(err);
@@ -199,6 +229,10 @@ const ESignatureModal = ({
       return;
     }
 
+    if (otpMissing()) {
+      return;
+    }
+
     if (meaning === SignatureMeaning.REJECTED && !rejectionReason.trim()) {
       setError(
         intl.formatMessage({
@@ -216,6 +250,7 @@ const ESignatureModal = ({
       const signature = await executeSignature({
         username: enteredUsername.trim(),
         password,
+        otp: otpRequired ? otp.trim() : undefined,
         signatureMeaning: meaning,
         recordType,
         recordId,
@@ -251,6 +286,15 @@ const ESignatureModal = ({
             intl.formatMessage({
               id: "esig.error.disabled",
               defaultMessage: "Electronic signatures are not enabled",
+            }),
+          );
+          break;
+        case "VERIFICATION_UNAVAILABLE":
+          setError(
+            intl.formatMessage({
+              id: "esig.error.verificationUnavailable",
+              defaultMessage:
+                "Your signature could not be verified just now. Try again in a moment; if it keeps failing, contact support.",
             }),
           );
           break;
@@ -323,6 +367,28 @@ const ESignatureModal = ({
     });
   };
 
+  // the code from the authenticator app, under the password, for single sign-on users
+  const renderOtpInput = (id) =>
+    otpRequired && (
+      <TextInput
+        id={id}
+        labelText={intl.formatMessage({
+          id: "esig.label.otp",
+          defaultMessage: "Authenticator code",
+        })}
+        placeholder={intl.formatMessage({
+          id: "esig.placeholder.otp",
+          defaultMessage: "6-digit code from your authenticator app",
+        })}
+        value={otp}
+        onChange={(e) => setOtp(e.target.value)}
+        invalid={!!error && !otp.trim()}
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        maxLength={8}
+      />
+    );
+
   const renderCertificationContent = () => (
     <Stack gap={5}>
       <p>
@@ -369,6 +435,7 @@ const ESignatureModal = ({
         onChange={(e) => setPassword(e.target.value)}
         invalid={!!error && !password}
       />
+      {renderOtpInput("certification-otp")}
     </Stack>
   );
 
@@ -459,6 +526,7 @@ const ESignatureModal = ({
         invalid={!!error && !password}
         autoFocus={flowStep === "passwordOnly"}
       />
+      {renderOtpInput("signature-otp")}
 
       {meaning === SignatureMeaning.REJECTED && (
         <TextArea

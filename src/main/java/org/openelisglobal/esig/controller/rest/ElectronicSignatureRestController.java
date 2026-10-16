@@ -20,6 +20,7 @@ import org.openelisglobal.common.util.PdfExportSupport;
 import org.openelisglobal.common.util.PdfExportSupport.ExportWindow;
 import org.openelisglobal.common.util.StringUtil;
 import org.openelisglobal.esig.service.ElectronicSignatureService;
+import org.openelisglobal.esig.service.EsigVerificationUnavailableException;
 import org.openelisglobal.esig.valueholder.ElectronicSignature;
 import org.openelisglobal.esig.valueholder.EsigFirstUseCertification;
 import org.openelisglobal.esig.valueholder.SignatureMeaning;
@@ -118,7 +119,7 @@ public class ElectronicSignatureRestController extends BaseRestController {
             String userAgent = httpRequest.getHeader("User-Agent");
 
             ElectronicSignature signature = electronicSignatureService.executeSignature(username, request.getPassword(),
-                    request.getSignatureMeaning(), request.getRecordType(), request.getRecordId(),
+                    request.getOtp(), request.getSignatureMeaning(), request.getRecordType(), request.getRecordId(),
                     request.getRejectionReason(), clientIp, userAgent);
 
             return ResponseEntity.ok(toSignatureResponse(signature));
@@ -136,6 +137,10 @@ public class ElectronicSignatureRestController extends BaseRestController {
             // Keycloak not supported yet
             return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
                     .body(errorResponse("NOT_IMPLEMENTED", e.getMessage()));
+        } catch (EsigVerificationUnavailableException e) {
+            LogEvent.logWarn(getClass().getSimpleName(), "executeSignature", e.getMessage());
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(errorResponse("VERIFICATION_UNAVAILABLE", "Your signature could not be verified just now"));
         } catch (Exception e) {
             LogEvent.logError(e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -175,7 +180,7 @@ public class ElectronicSignatureRestController extends BaseRestController {
             String userAgent = httpRequest.getHeader("User-Agent");
 
             EsigFirstUseCertification certification = electronicSignatureService.certifyUser(username,
-                    request.getPassword(), request.getCertificationText(), clientIp, userAgent);
+                    request.getPassword(), request.getOtp(), request.getCertificationText(), clientIp, userAgent);
 
             return ResponseEntity.ok(toCertificationResponse(certification));
 
@@ -183,6 +188,10 @@ public class ElectronicSignatureRestController extends BaseRestController {
             LogEvent.logWarn(getClass().getSimpleName(), "certifyUser", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(errorResponse("INVALID_REQUEST", "Invalid credentials or request"));
+        } catch (EsigVerificationUnavailableException e) {
+            LogEvent.logWarn(getClass().getSimpleName(), "certifyUser", e.getMessage());
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(errorResponse("VERIFICATION_UNAVAILABLE", "Your signature could not be verified just now"));
         } catch (Exception e) {
             LogEvent.logError(e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -461,6 +470,9 @@ public class ElectronicSignatureRestController extends BaseRestController {
     public ResponseEntity<?> isEsigEnabled() {
         Map<String, Object> response = new HashMap<>();
         response.put("enabled", electronicSignatureService.isEsigEnabled());
+        // single sign-on users also give their authenticator code when signing
+        String username = getAuthenticatedUsername();
+        response.put("otpRequired", username != null && electronicSignatureService.signsWithKeycloak(username));
         return ResponseEntity.ok(response);
     }
 
@@ -528,6 +540,10 @@ public class ElectronicSignatureRestController extends BaseRestController {
     public static class SignatureRequest {
         private String username;
         private String password;
+        /**
+         * The one-time code from the signer's authenticator app (single sign-on users).
+         */
+        private String otp;
         private SignatureMeaning signatureMeaning;
         private String recordType;
         private Long recordId;
@@ -547,6 +563,14 @@ public class ElectronicSignatureRestController extends BaseRestController {
 
         public void setPassword(String password) {
             this.password = password;
+        }
+
+        public String getOtp() {
+            return otp;
+        }
+
+        public void setOtp(String otp) {
+            this.otp = otp;
         }
 
         public SignatureMeaning getSignatureMeaning() {
@@ -588,6 +612,10 @@ public class ElectronicSignatureRestController extends BaseRestController {
     public static class CertificationRequest {
         private String username;
         private String password;
+        /**
+         * The one-time code from the signer's authenticator app (single sign-on users).
+         */
+        private String otp;
         private String certificationText;
 
         public String getUsername() {
@@ -604,6 +632,14 @@ public class ElectronicSignatureRestController extends BaseRestController {
 
         public void setPassword(String password) {
             this.password = password;
+        }
+
+        public String getOtp() {
+            return otp;
+        }
+
+        public void setOtp(String otp) {
+            this.otp = otp;
         }
 
         public String getCertificationText() {

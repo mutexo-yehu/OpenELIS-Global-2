@@ -5,6 +5,7 @@ import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.esig.valueholder.AuthMethod;
 import org.openelisglobal.login.service.LoginUserService;
 import org.openelisglobal.login.valueholder.LoginUser;
+import org.openelisglobal.security.login.LocalLoginPolicy;
 import org.openelisglobal.systemuser.service.SystemUserService;
 import org.openelisglobal.systemuser.valueholder.SystemUser;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,8 +16,9 @@ import org.springframework.stereotype.Service;
  * Implementation of credential verification for electronic signatures.
  *
  * <p>
- * Currently supports local OpenELIS authentication only. Keycloak support is
- * planned for a future release.
+ * Local accounts are checked against their OpenELIS password. With Keycloak
+ * single sign-on, everyone else is checked with Keycloak (password and
+ * authenticator code), see {@link KeycloakCredentialVerifier}.
  */
 @Service
 public class CredentialVerificationServiceImpl implements CredentialVerificationService {
@@ -26,6 +28,12 @@ public class CredentialVerificationServiceImpl implements CredentialVerification
 
     @Autowired
     private SystemUserService systemUserService;
+
+    @Autowired
+    private KeycloakCredentialVerifier keycloakCredentialVerifier;
+
+    @Autowired
+    private LocalLoginPolicy localLoginPolicy;
 
     @Value("${org.itech.login.saml:false}")
     private boolean samlEnabled;
@@ -55,6 +63,11 @@ public class CredentialVerificationServiceImpl implements CredentialVerification
 
     @Override
     public AuthMethod verifyCredentialsByLoginName(String loginName, String password) {
+        return verifyCredentialsByLoginName(loginName, password, null);
+    }
+
+    @Override
+    public AuthMethod verifyCredentialsByLoginName(String loginName, String password, String otp) {
         if (loginName == null || loginName.isEmpty()) {
             throw new IllegalArgumentException("Login name is required");
         }
@@ -62,11 +75,13 @@ public class CredentialVerificationServiceImpl implements CredentialVerification
             throw new IllegalArgumentException("Password is required");
         }
 
-        // Check if Keycloak is enabled - not supported yet
-        if (isKeycloakEnabled()) {
-            throw new UnsupportedOperationException(
-                    "Keycloak credential verification for electronic signatures is not yet implemented. "
-                            + "Please use local authentication or disable Keycloak SSO.");
+        // With single sign-on, people have no OpenELIS password: Keycloak checks
+        // their password and authenticator code. Accounts allowed to sign in locally
+        // (a break-glass administrator) keep their local password, as at sign-in;
+        // nobody else can use a local password to sign without the second factor.
+        if (signsWithKeycloak(loginName)) {
+            keycloakCredentialVerifier.verify(loginName, password, otp);
+            return AuthMethod.KEYCLOAK;
         }
 
         // Verify against local authentication
@@ -75,6 +90,11 @@ public class CredentialVerificationServiceImpl implements CredentialVerification
         }
 
         throw new IllegalArgumentException("Invalid credentials");
+    }
+
+    @Override
+    public boolean signsWithKeycloak(String loginName) {
+        return isKeycloakEnabled() && !(localLoginPolicy.isRestricted() && localLoginPolicy.isAllowed(loginName));
     }
 
     @Override

@@ -36,6 +36,23 @@ public interface CredentialVerificationService {
     AuthMethod verifyCredentialsByLoginName(String loginName, String password);
 
     /**
+     * As {@link #verifyCredentialsByLoginName(String, String)}, with the one-time
+     * code from the user's authenticator app. Keycloak asks for it when the user
+     * has one; local accounts ignore it.
+     *
+     * @param otp the one-time code, or null
+     * @throws EsigVerificationUnavailableException if the identity provider can't
+     *                                              be asked
+     */
+    AuthMethod verifyCredentialsByLoginName(String loginName, String password, String otp);
+
+    /**
+     * True when this user's signatures are checked by Keycloak (so the signing
+     * dialog asks for their authenticator code), false for a local account.
+     */
+    boolean signsWithKeycloak(String loginName);
+
+    /**
      * Check if Keycloak authentication is enabled for this site.
      *
      * @return true if Keycloak is the configured auth provider

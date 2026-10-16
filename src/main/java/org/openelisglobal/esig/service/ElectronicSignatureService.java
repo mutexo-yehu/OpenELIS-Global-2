@@ -41,8 +41,18 @@ public interface ElectronicSignatureService extends BaseObjectService<Electronic
      * @throws IllegalArgumentException if user not certified or credentials invalid
      * @throws IllegalStateException    if e-signatures are disabled
      */
-    ElectronicSignature executeSignature(String username, String password, SignatureMeaning meaning, String recordType,
-            Long recordId, String rejectionReason, String clientIp, String userAgent);
+    default ElectronicSignature executeSignature(String username, String password, SignatureMeaning meaning,
+            String recordType, Long recordId, String rejectionReason, String clientIp, String userAgent) {
+        return executeSignature(username, password, null, meaning, recordType, recordId, rejectionReason, clientIp,
+                userAgent);
+    }
+
+    /**
+     * As above, with the one-time code from the signer's authenticator app, which
+     * Keycloak asks for when the signer has one (null for local accounts).
+     */
+    ElectronicSignature executeSignature(String username, String password, String otp, SignatureMeaning meaning,
+            String recordType, Long recordId, String rejectionReason, String clientIp, String userAgent);
 
     // ========================
     // Signature Queries
@@ -137,8 +147,20 @@ public interface ElectronicSignatureService extends BaseObjectService<Electronic
      * @return the created certification record
      * @throws IllegalArgumentException if credentials invalid or already certified
      */
-    EsigFirstUseCertification certifyUser(String username, String password, String certificationText, String clientIp,
-            String userAgent);
+    default EsigFirstUseCertification certifyUser(String username, String password, String certificationText,
+            String clientIp, String userAgent) {
+        return certifyUser(username, password, null, certificationText, clientIp, userAgent);
+    }
+
+    /** As above, with the signer's one-time code (null for local accounts). */
+    EsigFirstUseCertification certifyUser(String username, String password, String otp, String certificationText,
+            String clientIp, String userAgent);
+
+    /**
+     * True when this user's signatures are checked by Keycloak, so the signing
+     * dialog also asks for their authenticator code.
+     */
+    boolean signsWithKeycloak(String username);
 
     /**
      * Revoke a user's certification (admin action). User will need to re-certify

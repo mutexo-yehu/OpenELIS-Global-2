@@ -71,7 +71,7 @@ public class ElectronicSignatureServiceImpl extends AuditableBaseObjectServiceIm
 
     @Override
     @Transactional
-    public ElectronicSignature executeSignature(String username, String password, SignatureMeaning meaning,
+    public ElectronicSignature executeSignature(String username, String password, String otp, SignatureMeaning meaning,
             String recordType, Long recordId, String rejectionReason, String clientIp, String userAgent) {
 
         // 0. Validate required parameters
@@ -103,7 +103,7 @@ public class ElectronicSignatureServiceImpl extends AuditableBaseObjectServiceIm
         }
 
         // 4. Verify credentials
-        AuthMethod authMethod = verifyCredentials(username, password);
+        AuthMethod authMethod = verifyCredentials(username, password, otp);
 
         // 5. Validate rejection reason if meaning is REJECTED
         if (meaning == SignatureMeaning.REJECTED) {
@@ -213,7 +213,7 @@ public class ElectronicSignatureServiceImpl extends AuditableBaseObjectServiceIm
 
     @Override
     @Transactional
-    public EsigFirstUseCertification certifyUser(String username, String password, String certificationText,
+    public EsigFirstUseCertification certifyUser(String username, String password, String otp, String certificationText,
             String clientIp, String userAgent) {
 
         // 1. Look up user by username
@@ -234,7 +234,7 @@ public class ElectronicSignatureServiceImpl extends AuditableBaseObjectServiceIm
         }
 
         // 4. Verify credentials
-        verifyCredentials(username, password);
+        verifyCredentials(username, password, otp);
 
         // 5. Create certification record
         EsigFirstUseCertification certification = new EsigFirstUseCertification();
@@ -314,8 +314,13 @@ public class ElectronicSignatureServiceImpl extends AuditableBaseObjectServiceIm
      * @return the authentication method used
      * @throws IllegalArgumentException if credentials are invalid
      */
-    private AuthMethod verifyCredentials(String username, String password) {
-        return credentialVerificationService.verifyCredentialsByLoginName(username, password);
+    @Override
+    public boolean signsWithKeycloak(String username) {
+        return credentialVerificationService.signsWithKeycloak(username);
+    }
+
+    private AuthMethod verifyCredentials(String username, String password, String otp) {
+        return credentialVerificationService.verifyCredentialsByLoginName(username, password, otp);
     }
 
     /**
