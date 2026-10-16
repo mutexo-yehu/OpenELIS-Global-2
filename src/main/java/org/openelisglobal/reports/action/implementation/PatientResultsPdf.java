@@ -22,6 +22,7 @@ import org.openpdf.text.pdf.ColumnText;
 import org.openpdf.text.pdf.PdfPCell;
 import org.openpdf.text.pdf.PdfPTable;
 import org.openpdf.text.pdf.PdfPageEventHelper;
+import org.openpdf.text.pdf.PdfTemplate;
 import org.openpdf.text.pdf.PdfWriter;
 
 /**
@@ -61,19 +62,29 @@ final class PatientResultsPdf {
         int start = 0;
         while (start < items.size()) {
             int end = start;
-            while (end < items.size()
-                    && Objects.equals(items.get(end).getSubjectNumber(), items.get(start).getSubjectNumber())) {
+            while (end < items.size() && patientKey(items.get(end)).equals(patientKey(items.get(start)))) {
                 end++;
             }
             if (start > 0) {
                 document.newPage();
             }
-            footer.startPatient(writer.getPageNumber());
+            footer.startPatient(writer, writer.getPageNumber());
             addPatient(document, writer, settings, items.subList(start, end));
             start = end;
         }
         document.close();
         return out.toByteArray();
+    }
+
+    /**
+     * Which patient a row belongs to. The subject number alone isn't enough: sites
+     * that don't use it leave it blank for everyone, and their patients would run
+     * together under one header.
+     */
+    static String patientKey(ClinicalPatientData item) {
+        return String.join("|", Objects.toString(item.getSubjectNumber(), ""),
+                Objects.toString(item.getNationalId(), ""), Objects.toString(item.getPatientName(), ""),
+                Objects.toString(item.getDob(), ""));
     }
 
     /**
@@ -104,10 +115,10 @@ final class PatientResultsPdf {
                     document.add(results);
                 }
                 results = resultsTable();
+                String patientCode = GenericValidator.isBlankOrNull(item.getSubjectNumber()) ? ""
+                        : MessageUtil.getMessage("report.patientCode") + " " + item.getSubjectNumber() + "    ";
                 PdfPCell identity = new PdfPCell(new Phrase(
-                        MessageUtil.getMessage("report.patientCode") + " "
-                                + Objects.toString(item.getSubjectNumber(), "") + "    "
-                                + MessageUtil.getMessage("report.ordinanceNo") + " " + item.getAccessionNumber(),
+                        patientCode + MessageUtil.getMessage("report.ordinanceNo") + " " + item.getAccessionNumber(),
                         SECTION_FONT));
                 identity.setColspan(RESULT_WIDTHS.length);
                 results.addCell(identity);
@@ -148,19 +159,22 @@ final class PatientResultsPdf {
         return validatedBy;
     }
 
+    /**
+     * The order's report status on one line: amended (when it is) and complete or
+     * partial.
+     */
     private static void addOrderNotices(Document document, ClinicalPatientData item) {
+        Paragraph status = new Paragraph();
         if (item.isCorrectedResult()) {
-            Paragraph corrected = new Paragraph(MessageUtil.getMessage("report.correctedReport"), NOTICE_FONT);
-            corrected.setAlignment(Element.ALIGN_CENTER);
-            document.add(corrected);
+            status.add(new Phrase(MessageUtil.getMessage("report.correctedReport"), NOTICE_FONT));
+            status.add(new Phrase("  ·  ", SECTION_FONT));
         }
-        Paragraph status = new Paragraph(
+        status.add(new Phrase(
                 MessageUtil.getMessage("report.results") + " " + Objects.toString(item.getCompleteFlag(), ""),
-                SECTION_FONT);
+                SECTION_FONT));
         status.setAlignment(Element.ALIGN_CENTER);
-        status.setSpacingBefore(8);
+        status.setSpacingBefore(6);
         document.add(status);
-
     }
 
     private static void addOrderDetails(Document document, Settings settings, ClinicalPatientData item) {
@@ -172,13 +186,20 @@ final class PatientResultsPdf {
         }
         String[] site = Objects.toString(item.getSiteInfo(), "").split("\\|", 2);
 
-        PdfPTable details = new PdfPTable(new float[] { 100, 100, 87, 117, 22, 26, 25, 50, 20, 26 });
+        // the second column is wide enough for a 20-character lab number on one line
+        PdfPTable details = new PdfPTable(new float[] { 88, 117, 85, 115, 22, 26, 25, 50, 20, 25 });
         details.setWidthPercentage(100);
         details.setSpacingBefore(6);
-        details.addCell(label(MessageUtil.getMessage("report.patientCode"), 1));
-        details.addCell(value(item.getSubjectNumber(), 1));
-        details.addCell(label(nationalIdLabel, 1));
-        details.addCell(value(nationalId, 1));
+        if (GenericValidator.isBlankOrNull(item.getSubjectNumber())) {
+            // sites that don't use subject numbers: no empty "Patient code" box
+            details.addCell(label(nationalIdLabel, 1));
+            details.addCell(value(nationalId, 3));
+        } else {
+            details.addCell(label(MessageUtil.getMessage("report.patientCode"), 1));
+            details.addCell(value(item.getSubjectNumber(), 1));
+            details.addCell(label(nationalIdLabel, 1));
+            details.addCell(value(nationalId, 1));
+        }
         details.addCell(label(MessageUtil.getMessage("report.age"), 1));
         details.addCell(value(item.getAge(), 1));
         details.addCell(label(MessageUtil.getMessage("report.dob"), 1));
@@ -312,18 +333,40 @@ final class PatientResultsPdf {
         return cell;
     }
 
-    /** The legend, report date and page number at the foot of every page. */
+    /**
+     * The legend, report date and page number ("Page 2 of 3", counted per patient)
+     * at the foot of every page.
+     */
     private static final class Footer extends PdfPageEventHelper {
         private final boolean usePageNumbers;
         private int patientFirstPage = 1;
+        /**
+         * Where the patient's page count goes, filled in once their last page is known.
+         */
+        private PdfTemplate patientPageCount;
 
         Footer(boolean usePageNumbers) {
             this.usePageNumbers = usePageNumbers;
         }
 
         /** Each patient's pages are numbered from 1, as the template restarted them. */
-        void startPatient(int page) {
+        void startPatient(PdfWriter writer, int page) {
+            finishPatient(page - 1);
             patientFirstPage = page;
+            patientPageCount = usePageNumbers ? writer.getDirectContent().createTemplate(20, 10) : null;
+        }
+
+        private void finishPatient(int lastPage) {
+            if (patientPageCount != null) {
+                ColumnText.showTextAligned(patientPageCount, Element.ALIGN_LEFT,
+                        new Phrase(String.valueOf(lastPage - patientFirstPage + 1), FOOTER_FONT), 0, 1, 0);
+                patientPageCount = null;
+            }
+        }
+
+        @Override
+        public void onCloseDocument(PdfWriter writer, Document document) {
+            finishPatient(writer.getPageNumber() - 1);
         }
 
         @Override
@@ -347,11 +390,17 @@ final class PatientResultsPdf {
                     new Phrase(MessageUtil.getMessage("report.reportDate") + " " + DateUtil.getCurrentDateAsText() + " "
                             + DateUtil.getCurrentTimeAsText(), FOOTER_FONT),
                     document.left(), document.bottom() - 26, 0);
-            if (usePageNumbers) {
+            if (usePageNumbers && patientPageCount != null) {
+                // "Page 2 of" ends just before the count's placeholder
+                float countX = document.right() - 12;
+                float y = document.bottom() - 26;
                 ColumnText.showTextAligned(writer.getDirectContent(), Element.ALIGN_RIGHT,
-                        new Phrase(MessageUtil.getMessage("report.label.page") + " "
-                                + (writer.getPageNumber() - patientFirstPage + 1), FOOTER_FONT),
-                        document.right(), document.bottom() - 26, 0);
+                        new Phrase(MessageUtil.getMessage("report.label.page").trim() + " "
+                                + (writer.getPageNumber() - patientFirstPage + 1) + " "
+                                + MessageUtil.getMessage("report.pageNumberOf").trim(), FOOTER_FONT),
+                        countX, y, 0);
+                // the count sits a space after "of"
+                writer.getDirectContent().addTemplate(patientPageCount, countX + 2, y - 1);
             }
         }
     }

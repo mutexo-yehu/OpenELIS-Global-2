@@ -147,6 +147,52 @@ public class PatientResultsPdfTest extends BaseWebContextSensitiveTest {
     }
 
     @Test
+    public void patientsWithoutASubjectNumberStillEachStartTheirOwnPage() throws Exception {
+        List<ClinicalPatientData> rows = new ArrayList<>(rows(null));
+        List<ClinicalPatientData> second = rows(null);
+        second.forEach(row -> {
+            row.setPatientName("Roe, Richard");
+            row.setNationalId("NID-912");
+        });
+        rows.addAll(second);
+
+        byte[] pdf = PatientResultsPdf.render(settings(true, List.of(), null), rows);
+
+        assertEquals(2, PdfText.pageCount(pdf));
+        assertTrue(PdfText.ofPage(pdf, 1).contains("Doe, Jane"));
+        assertTrue(PdfText.ofPage(pdf, 2).contains("Roe, Richard"));
+        org.junit.Assert.assertFalse("no empty Patient code box", PdfText.of(pdf).contains("Patient code"));
+    }
+
+    @Test
+    public void pageNumbersShowEachPatientsTotal() throws Exception {
+        List<ClinicalPatientData> rows = new ArrayList<>();
+        for (int i = 0; i < 95; i++) {
+            rows.add(row("PAT-LONG", "Long Section", "Test " + i, "12.5", "L", "12 - 16", "g/L", null));
+        }
+        rows.addAll(rows("PAT-SHORT"));
+
+        byte[] pdf = PatientResultsPdf.render(settings(true, List.of(), null), rows);
+
+        int pages = PdfText.pageCount(pdf);
+        int longPages = pages - 1;
+        assertTrue(PdfText.ofPage(pdf, 1).contains("Page 1 of " + longPages));
+        assertTrue(PdfText.ofPage(pdf, longPages).contains("Page " + longPages + " of " + longPages));
+        assertTrue(PdfText.ofPage(pdf, pages).contains("Page 1 of 1"));
+    }
+
+    @Test
+    public void anAmendedOrdersStatusIsOneLine() throws Exception {
+        List<ClinicalPatientData> rows = new ArrayList<>(rows("PAT-0001"));
+        rows.forEach(row -> row.setCorrectedResult(true));
+
+        List<String> lines = lines(PdfText.of(PatientResultsPdf.render(settings(false, List.of(), null), rows)));
+
+        assertTrue(lines.toString(), lines.stream()
+                .anyMatch(line -> line.contains("Corrected Report") && line.contains("Results Complete")));
+    }
+
+    @Test
     public void printsTheAccreditationNotesLineUnderTheTitle() throws Exception {
         byte[] pdf = PatientResultsPdf
                 .render(settings(false, List.of(logo()), "Accredited to ISO 15189 for marked tests"), rows("PAT-0001"));
