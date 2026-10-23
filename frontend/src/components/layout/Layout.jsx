@@ -128,10 +128,12 @@ export default function Layout(props) {
   };
 
   const fetchConfigurationProperties = (res) => {
-    installDateLocaleDefault(
-      dateFormattingLocale(res?.DEFAULT_DATE_LOCALE, res?.DEFAULT_LANG_LOCALE),
-    );
-    setConfigurationProperties(res);
+    if (res) {
+      installDateLocaleDefault(
+        dateFormattingLocale(res.DEFAULT_DATE_LOCALE, res.DEFAULT_LANG_LOCALE),
+      );
+    }
+    setConfigurationProperties((current) => res || current);
   };
 
   const loadConfigurationProperties = useCallback(
@@ -170,7 +172,11 @@ export default function Layout(props) {
   }, [loadConfigurationProperties, resetConfig]);
 
   // Fetch supported locales from backend
+  const sessionAnswered = userSessionDetails?.authenticated !== undefined;
   useEffect(() => {
+    if (!sessionAnswered) {
+      return;
+    }
     getFromOpenElisServer("/rest/supportedlocales/active", (response) => {
       if (response && Array.isArray(response)) {
         setSupportedLocales(response);
@@ -178,7 +184,7 @@ export default function Layout(props) {
         setEnabledLanguages(builtLanguages);
       }
     });
-  }, []);
+  }, [sessionAnswered]);
 
   return (
     <ConfigurationContext.Provider

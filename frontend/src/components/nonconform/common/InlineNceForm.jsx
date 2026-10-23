@@ -24,6 +24,28 @@ import { NotificationKinds } from "../../common/CustomNotification";
 import UserSessionDetailsContext from "../../../UserSessionDetailsContext";
 import NceFileAttachment from "./NceFileAttachment";
 import "./InlineNceForm.css";
+import { RequiredMarker, requiredProps } from "../../common/RequiredMarker";
+
+const SEVERITIES = [
+  {
+    value: "CRITICAL",
+    tone: "critical",
+    label: "nce.severity.critical",
+    description: "nce.severity.critical.description",
+  },
+  {
+    value: "MAJOR",
+    tone: "major",
+    label: "nce.severity.major",
+    description: "nce.severity.major.description",
+  },
+  {
+    value: "MINOR",
+    tone: "minor",
+    label: "nce.severity.minor",
+    description: "nce.severity.minor.description",
+  },
+];
 
 /**
  * Inline NCE form for embedding in result entry or order workflow pages.
@@ -33,6 +55,8 @@ import "./InlineNceForm.css";
  *  - resultRow: result row data (accessionNumber, patientName, testName, resultValue, sampleItemId, analysisId)
  *               used in result entry context; analysisId/testName are optional
  *  - accessionNumber: lab number to use when resultRow is not available (order context)
+ *  - sampleItemId: optional specimen the order step is about; without one the
+ *               server links the order's specimens
  *  - onClose: callback when form is cancelled or submitted
  *  - onSubmitSuccess: optional callback after successful NCE creation
  *  - initialDescription: optional text to seed the Description field (S-09 FR-07A:
@@ -41,6 +65,7 @@ import "./InlineNceForm.css";
 const InlineNceForm = ({
   resultRow,
   accessionNumber,
+  sampleItemId,
   onClose,
   onSubmitSuccess,
   initialDescription,
@@ -103,24 +128,7 @@ const InlineNceForm = ({
   // Load categories, reporting units, and generate NCE number
   useEffect(() => {
     getFromOpenElisServer("/rest/nce/categories", (response) => {
-      if (response && Array.isArray(response)) {
-        setCategories(response);
-      } else {
-        getFromOpenElisServer(
-          "/rest/displayList/NCE_CATEGORY",
-          (fallbackResponse) => {
-            if (fallbackResponse && Array.isArray(fallbackResponse)) {
-              setCategories(
-                fallbackResponse.map((item) => ({
-                  id: item.id,
-                  name: item.value,
-                  types: [],
-                })),
-              );
-            }
-          },
-        );
-      }
+      setCategories(Array.isArray(response) ? response : []);
     });
 
     getFromOpenElisServer(
@@ -151,22 +159,7 @@ const InlineNceForm = ({
   useEffect(() => {
     if (nceForm.categoryId) {
       const category = categories.find((cat) => cat.id === nceForm.categoryId);
-      if (category && category.types && category.types.length > 0) {
-        setTypes(category.types);
-      } else {
-        getFromOpenElisServer(
-          `/rest/displayList/NCE_TYPE_FOR_CATEGORY?categoryId=${nceForm.categoryId}`,
-          (response) => {
-            if (response && Array.isArray(response)) {
-              setTypes(
-                response.map((item) => ({ id: item.id, name: item.value })),
-              );
-            } else {
-              setTypes([]);
-            }
-          },
-        );
-      }
+      setTypes(category && Array.isArray(category.types) ? category.types : []);
     } else {
       setTypes([]);
     }
@@ -231,7 +224,11 @@ const InlineNceForm = ({
       dateOfEvent: nceForm.dateOfEvent,
       reportingUnit: nceForm.reportingUnit,
       labOrderNumber: resolvedAccessionNumber,
-      specimenId: resultRow?.sampleItemId ? String(resultRow.sampleItemId) : "",
+      specimenId: resultRow?.sampleItemId
+        ? String(resultRow.sampleItemId)
+        : sampleItemId
+          ? String(sampleItemId)
+          : "",
       analysisId: resultRow?.analysisId ? String(resultRow.analysisId) : "",
       title: nceForm.title,
       description: nceForm.description,
@@ -262,15 +259,20 @@ const InlineNceForm = ({
       onClose?.();
     };
 
-    const handleError = () => {
+    const handleError = (reason) => {
       setSubmitting(false);
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
-        message: intl.formatMessage({
-          id: "nonconform.order.save.fail",
-          defaultMessage: "Failed to report NCE",
-        }),
+        message: reason
+          ? intl.formatMessage(
+              { id: "nonconform.order.save.failBecause" },
+              { reason },
+            )
+          : intl.formatMessage({
+              id: "nonconform.order.save.fail",
+              defaultMessage: "Failed to report NCE",
+            }),
       });
       setNotificationVisible(true);
     };
@@ -301,7 +303,7 @@ const InlineNceForm = ({
           if (data && data.success) {
             handleSuccess();
           } else {
-            handleError();
+            handleError(data && data.error);
           }
         },
       );
@@ -367,11 +369,15 @@ const InlineNceForm = ({
           <DatePickerInput
             id="inline-nce-date"
             placeholder="mm/dd/yyyy"
+            {...requiredProps()}
             labelText={
-              intl.formatMessage({
-                id: "nce.field.dateOfEvent",
-                defaultMessage: "Date of Event",
-              }) + " *"
+              <>
+                {intl.formatMessage({
+                  id: "nce.field.dateOfEvent",
+                  defaultMessage: "Date of Event",
+                })}
+                <RequiredMarker />
+              </>
             }
             invalid={!!errors.dateOfEvent}
             invalidText={errors.dateOfEvent}
@@ -379,11 +385,15 @@ const InlineNceForm = ({
         </DatePicker>
         <Select
           id="inline-nce-reporting-unit"
+          {...requiredProps()}
           labelText={
-            intl.formatMessage({
-              id: "nce.field.reportingUnit",
-              defaultMessage: "Reporting Unit",
-            }) + " *"
+            <>
+              {intl.formatMessage({
+                id: "nce.field.reportingUnit",
+                defaultMessage: "Reporting Unit",
+              })}
+              <RequiredMarker />
+            </>
           }
           value={nceForm.reportingUnit}
           onChange={(e) => handleFormChange("reportingUnit", e.target.value)}
@@ -401,11 +411,15 @@ const InlineNceForm = ({
       <div className="inline-nce-row">
         <Select
           id="inline-nce-category"
+          {...requiredProps()}
           labelText={
-            intl.formatMessage({
-              id: "nce.field.category",
-              defaultMessage: "Category",
-            }) + " *"
+            <>
+              {intl.formatMessage({
+                id: "nce.field.category",
+                defaultMessage: "Category",
+              })}
+              <RequiredMarker />
+            </>
           }
           value={nceForm.categoryId}
           onChange={(e) => {
@@ -451,76 +465,50 @@ const InlineNceForm = ({
 
       {/* Severity */}
       <div className="inline-nce-section">
-        <label className="inline-nce-label">
+        <label className="inline-nce-label" id="inline-nce-severity-label">
           <FormattedMessage id="nce.field.severity" defaultMessage="Severity" />{" "}
           *
         </label>
         {errors.severity && (
           <span className="inline-nce-error">{errors.severity}</span>
         )}
-        <div className="inline-nce-severity">
-          <div
-            className={`inline-nce-severity-card ${nceForm.severity === "CRITICAL" ? "selected critical" : ""}`}
-            onClick={() => handleFormChange("severity", "CRITICAL")}
-          >
-            <div className="inline-nce-severity-indicator critical"></div>
-            <div className="inline-nce-severity-content">
-              <span className="inline-nce-severity-label">
-                <FormattedMessage
-                  id="nce.severity.critical"
-                  defaultMessage="Critical"
-                />
-              </span>
-              <span className="inline-nce-severity-desc">
-                <FormattedMessage
-                  id="nce.severity.critical.description"
-                  defaultMessage="Patient safety risk"
-                />
-              </span>
-            </div>
-          </div>
-
-          <div
-            className={`inline-nce-severity-card ${nceForm.severity === "MAJOR" ? "selected major" : ""}`}
-            onClick={() => handleFormChange("severity", "MAJOR")}
-          >
-            <div className="inline-nce-severity-indicator major"></div>
-            <div className="inline-nce-severity-content">
-              <span className="inline-nce-severity-label">
-                <FormattedMessage
-                  id="nce.severity.major"
-                  defaultMessage="Major"
-                />
-              </span>
-              <span className="inline-nce-severity-desc">
-                <FormattedMessage
-                  id="nce.severity.major.description"
-                  defaultMessage="Significant impact"
-                />
-              </span>
-            </div>
-          </div>
-
-          <div
-            className={`inline-nce-severity-card ${nceForm.severity === "MINOR" ? "selected minor" : ""}`}
-            onClick={() => handleFormChange("severity", "MINOR")}
-          >
-            <div className="inline-nce-severity-indicator minor"></div>
-            <div className="inline-nce-severity-content">
-              <span className="inline-nce-severity-label">
-                <FormattedMessage
-                  id="nce.severity.minor"
-                  defaultMessage="Minor"
-                />
-              </span>
-              <span className="inline-nce-severity-desc">
-                <FormattedMessage
-                  id="nce.severity.minor.description"
-                  defaultMessage="Limited impact"
-                />
-              </span>
-            </div>
-          </div>
+        <div
+          className="inline-nce-severity"
+          role="radiogroup"
+          aria-labelledby="inline-nce-severity-label"
+          aria-required="true"
+        >
+          {SEVERITIES.map(({ value, tone, label, description }) => {
+            const selected = nceForm.severity === value;
+            const choose = () => handleFormChange("severity", value);
+            return (
+              <div
+                key={value}
+                role="radio"
+                aria-checked={selected}
+                tabIndex={0}
+                data-testid={`inline-nce-severity-${value}`}
+                className={`inline-nce-severity-card ${selected ? `selected ${tone}` : ""}`}
+                onClick={choose}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    choose();
+                  }
+                }}
+              >
+                <div className={`inline-nce-severity-indicator ${tone}`}></div>
+                <div className="inline-nce-severity-content">
+                  <span className="inline-nce-severity-label">
+                    <FormattedMessage id={label} />
+                  </span>
+                  <span className="inline-nce-severity-desc">
+                    <FormattedMessage id={description} />
+                  </span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -542,11 +530,15 @@ const InlineNceForm = ({
 
       <TextArea
         id="inline-nce-description"
+        {...requiredProps()}
         labelText={
-          intl.formatMessage({
-            id: "nce.field.description",
-            defaultMessage: "Description",
-          }) + " *"
+          <>
+            {intl.formatMessage({
+              id: "nce.field.description",
+              defaultMessage: "Description",
+            })}
+            <RequiredMarker />
+          </>
         }
         placeholder={intl.formatMessage({
           id: "nce.field.description.placeholder",

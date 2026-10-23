@@ -400,7 +400,7 @@ public class ResultUtil {
                 }
             }
 
-            boolean reportDone = analysisService.patientReportHasBeenDone(analysis);
+            boolean reportDone = analysisService.releasedResultHasBeenReported(analysis);
             // what the patient report showed, read before this save replaces it
             String previousValue = reportDone ? CorrectionNotes.reportedValueOf(analysis) : "";
 

@@ -25,6 +25,7 @@ import {
   TableHeader,
   TableRow,
   TableSelectRow,
+  Tag,
   TextInput,
 } from "@carbon/react";
 import React, { useContext, useEffect, useRef, useState } from "react";
@@ -34,6 +35,7 @@ import {
   NotificationKinds,
 } from "../../common/CustomNotification";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import { RequiredMarker, requiredProps } from "../../common/RequiredMarker";
 import { ConfigurationContext, NotificationContext } from "../../layout/Layout";
 import "../../Style.css";
 import {
@@ -41,6 +43,30 @@ import {
   postToOpenElisServer,
   postToOpenElisServerFullResponse,
 } from "../../utils/Utils";
+
+/**
+ * One row of the dictionary list. The origin of the entry's label tells a
+ * shipped translation from the lab's override or the site's own value
+ * (OGC-1507).
+ */
+const toMenuRow = (item) => ({
+  id: item.id,
+  dictEntry: item.dictEntry,
+  labelOrigin: item.labelOrigin || "SITE_VALUE",
+  localAbbreviation: item.localAbbreviation,
+  isActive: item.isActive,
+  loincCode: item.loincCode || "",
+  categoryName: item.dictionaryCategory
+    ? item.dictionaryCategory.categoryName
+    : "not available",
+  lastupdated: item.lastupdated,
+});
+
+const ORIGIN_TAG = {
+  SHIPPED: { type: "blue", id: "translation.origin.shipped" },
+  SITE_OVERRIDE: { type: "purple", id: "translation.origin.siteOverride" },
+  SITE_VALUE: { type: "gray", id: "translation.origin.siteValue" },
+};
 
 function DictionaryManagement() {
   const intl = useIntl();
@@ -61,6 +87,7 @@ function DictionaryManagement() {
   const [dictionaryNumber, setDictionaryNumber] = useState("");
   const [dictionaryEntry, setDictionaryEntry] = useState("");
   const [localAbbreviation, setLocalAbbreviation] = useState("");
+  const [containerPopulation, setContainerPopulation] = useState("");
   const [isActive, setIsActive] = useState("");
   const [loincCode, setLoincCode] = useState("");
 
@@ -74,6 +101,7 @@ function DictionaryManagement() {
   const [modifyButton, setModifyButton] = useState(true);
   const [deactivateButton, setDeactivateButton] = useState(true);
   const [editMode, setEditMode] = useState(true);
+  const [touched, setTouched] = useState({});
 
   const startingRecNo = startingRecNoFor(page, serverPageSize);
   const [panelSearchTerm, setPanelSearchTerm] = useState("");
@@ -172,17 +200,7 @@ function DictionaryManagement() {
           );
         }
         if (res.menuList) {
-          const menuList = res.menuList.map((item) => ({
-            id: item.id,
-            dictEntry: item.dictEntry,
-            localAbbreviation: item.localAbbreviation,
-            isActive: item.isActive,
-            loincCode: item.loincCode || "",
-            categoryName: item.dictionaryCategory
-              ? item.dictionaryCategory.categoryName
-              : "not available",
-            lastupdated: item.lastupdated,
-          }));
+          const menuList = res.menuList.map(toMenuRow);
           setDictionaryMenuList(menuList);
         }
       }
@@ -216,17 +234,7 @@ function DictionaryManagement() {
           );
         }
         if (res.menuList) {
-          const menuList = res.menuList.map((item) => ({
-            id: item.id,
-            dictEntry: item.dictEntry,
-            localAbbreviation: item.localAbbreviation,
-            isActive: item.isActive,
-            loincCode: item.loincCode || "",
-            categoryName: item.dictionaryCategory
-              ? item.dictionaryCategory.categoryName
-              : "not available",
-            lastupdated: item.lastupdated,
-          }));
+          const menuList = res.menuList.map(toMenuRow);
           setSearchedMenuList(menuList);
         }
       }
@@ -267,6 +275,7 @@ function DictionaryManagement() {
     selectedDictionaryCategoryId: category?.id,
     dictEntry: dictionaryEntry,
     localAbbreviation: localAbbreviation,
+    containerPopulation: containerPopulation || null,
     isActive: isActive.id,
     loincCode: loincCode.trim() || null,
     dirtyFormFields: "",
@@ -328,6 +337,7 @@ function DictionaryManagement() {
       selectedDictionaryCategoryId: category.id,
       dictEntry: dictionaryEntry,
       localAbbreviation: localAbbreviation,
+      containerPopulation: containerPopulation || null,
       isActive: isActive.id,
       loincCode: loincCode.trim() || null,
       dirtyFormFields: dirtyFields,
@@ -375,6 +385,16 @@ function DictionaryManagement() {
         </TableCell>
       );
     }
+    if (cell.info.header === "labelOrigin") {
+      const origin = ORIGIN_TAG[cell.value] || ORIGIN_TAG.SITE_VALUE;
+      return (
+        <TableCell key={cell.id} data-cy={`cell-labelOrigin-${row.id}`}>
+          <Tag type={origin.type} size="sm">
+            <FormattedMessage id={origin.id} />
+          </Tag>
+        </TableCell>
+      );
+    }
     return (
       <TableCell key={cell.id} data-cy={`cell-${cell.info.header}-${row.id}`}>
         {cell.value}
@@ -389,6 +409,7 @@ function DictionaryManagement() {
       setDictionaryEntry(res.dictEntry);
       setIsActive(yesOrNo.find((item) => item.id === res.isActive));
       setLocalAbbreviation(res.localAbbreviation);
+      setContainerPopulation(res.containerPopulation || "");
       setLoincCode(res.loincCode || "");
     }
   };
@@ -507,7 +528,10 @@ function DictionaryManagement() {
                   data-cy="addButton"
                   style={{ width: isMobile ? "100%" : "auto" }}
                   disabled={!editMode}
-                  onClick={() => setOpen(true)}
+                  onClick={() => {
+                    setTouched({});
+                    setOpen(true);
+                  }}
                 >
                   {intl.formatMessage({
                     id: "admin.page.configuration.formEntryConfigMenu.button.add",
@@ -546,6 +570,11 @@ function DictionaryManagement() {
                   onRequestSubmit={
                     editMode ? handleSubmitModal : handleUpdateModal
                   }
+                  primaryButtonDisabled={
+                    !String(dictionaryEntry || "").trim() ||
+                    !String(localAbbreviation || "").trim() ||
+                    String(localAbbreviation).length > 60
+                  }
                 >
                   <TextInput
                     data-modal-primary-focus
@@ -571,6 +600,8 @@ function DictionaryManagement() {
                     itemToString={(item) => (item ? item.description : "")}
                     onChange={({ selectedItem }) => {
                       setCategory(selectedItem);
+                      if (selectedItem?.categoryName !== "Sample Container")
+                        setContainerPopulation("");
                     }}
                     selectedItem={category}
                     size="md"
@@ -578,13 +609,49 @@ function DictionaryManagement() {
                       marginBottom: "1rem",
                     }}
                   />
+                  {category?.categoryName === "Sample Container" && (
+                    <Dropdown
+                      id="container-population"
+                      titleText={intl.formatMessage({
+                        id: "dictionary.containerPopulation",
+                      })}
+                      label={intl.formatMessage({
+                        id: "dictionary.containerPopulation.unspecified",
+                      })}
+                      items={["", "ADULT", "PAEDIATRIC"]}
+                      selectedItem={containerPopulation}
+                      itemToString={(item) =>
+                        intl.formatMessage({
+                          id: `dictionary.containerPopulation.${item || "unspecified"}`,
+                        })
+                      }
+                      onChange={({ selectedItem }) => {
+                        setContainerPopulation(selectedItem || "");
+                        dirtyFieldsRef.current.add("containerPopulation");
+                      }}
+                    />
+                  )}
                   <TextInput
                     id="dictEntry"
-                    labelText={intl.formatMessage({
-                      id: "dictionary.dictEntry",
-                    })}
+                    {...requiredProps()}
+                    labelText={
+                      <>
+                        {intl.formatMessage({ id: "dictionary.dictEntry" })}
+                        <RequiredMarker />
+                      </>
+                    }
                     value={dictionaryEntry}
+                    invalid={
+                      (touched.dictEntry || !editMode) &&
+                      !String(dictionaryEntry || "").trim()
+                    }
+                    invalidText={intl.formatMessage({
+                      id: "dictionary.error.dictEntryRequired",
+                    })}
                     onChange={(e) => setDictionaryEntry(e.target.value)}
+                    onBlur={() =>
+                      setTouched((prev) => ({ ...prev, dictEntry: true }))
+                    }
                     style={{
                       marginBottom: "1rem",
                     }}
@@ -609,11 +676,30 @@ function DictionaryManagement() {
                   />
                   <TextInput
                     id="localAbbrev"
-                    labelText={intl.formatMessage({
-                      id: "dictionary.category.localAbbreviation",
-                    })}
+                    {...requiredProps()}
+                    labelText={
+                      <>
+                        {intl.formatMessage({
+                          id: "dictionary.category.localAbbreviation",
+                        })}
+                        <RequiredMarker />
+                      </>
+                    }
                     value={localAbbreviation}
+                    invalid={
+                      ((touched.localAbbrev || !editMode) &&
+                        !String(localAbbreviation || "").trim()) ||
+                      String(localAbbreviation || "").length > 60
+                    }
+                    invalidText={intl.formatMessage({
+                      id: String(localAbbreviation || "").trim()
+                        ? "dictionary.error.localAbbreviationTooLong"
+                        : "dictionary.error.localAbbreviationRequired",
+                    })}
                     onChange={(e) => setLocalAbbreviation(e.target.value)}
+                    onBlur={() =>
+                      setTouched((prev) => ({ ...prev, localAbbrev: true }))
+                    }
                     style={{
                       marginBottom: "1rem",
                     }}
@@ -714,6 +800,10 @@ function DictionaryManagement() {
                 {
                   key: "dictEntry",
                   header: intl.formatMessage({ id: "dictionary.dictEntry" }),
+                },
+                {
+                  key: "labelOrigin",
+                  header: intl.formatMessage({ id: "translation.origin" }),
                 },
                 {
                   key: "localAbbreviation",
