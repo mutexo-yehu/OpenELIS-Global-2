@@ -43,5 +43,7 @@
   <include relativeToChangelogFile="true" file="023-shipped-reference-data-labels.xml"/>
   <!-- Mutexo: who viewed patient data (feat/patient-access-log); kept after DIGI's entries, same file name so applied databases see it as done -->
   <include relativeToChangelogFile="true" file="008-patient-access-log.xml"/>
+  <!-- Blood product inventory: component types, units, reservations, append-only unit trail, settings, menu -->
+  <include relativeToChangelogFile="true" file="024-blood-product-inventory.xml"/>
 
 </databaseChangeLog>

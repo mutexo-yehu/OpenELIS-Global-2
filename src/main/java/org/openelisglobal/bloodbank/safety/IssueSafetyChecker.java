@@ -1,0 +1,155 @@
+package org.openelisglobal.bloodbank.safety;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import org.openelisglobal.bloodbank.safety.PatientBloodProfile.CrossmatchResult;
+import org.openelisglobal.bloodbank.safety.SafetyCheck.CheckStatus;
+import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.Abo;
+import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.ComponentClass;
+import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.ReservationStatus;
+import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.RhD;
+import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.UnitStatus;
+
+/**
+ * Every check that stands between a reserved unit and its issue to a patient.
+ * Pure: it reads only the snapshot it is given and the clock, so the dry run
+ * the screen shows and the check repeated inside the issuing transaction are
+ * the same code.
+ *
+ * <p>
+ * There is no override. Emergency release of uncrossmatched group O units is
+ * out of scope.
+ */
+public final class IssueSafetyChecker {
+
+    public static final String UNIT_STATUS = "UNIT_STATUS";
+    public static final String EXPIRY = "EXPIRY";
+    public static final String PATIENT_MATCH = "PATIENT_MATCH";
+    public static final String CROSSMATCH = "CROSSMATCH";
+    public static final String SECOND_PERSON = "SECOND_PERSON";
+
+    private IssueSafetyChecker() {
+    }
+
+    /** What the checks read. */
+    public record UnitFacts(Long id, UnitStatus status, ComponentClass componentClass, boolean needsCrossmatch, Abo abo,
+            RhD rhd, Instant expiresAt, Long patientId) {
+    }
+
+    /** The unit's live reservation; null when it has none. */
+    public record ReservationFacts(Long id, Long patientId, ReservationStatus status, Long crossmatchResultId) {
+    }
+
+    /**
+     * @param scannedPatientId the patient the scanned lab number or patient
+     *                         identifier resolved to, or null if it resolved to
+     *                         nobody
+     * @param secondCheck      the outcome of the second person's re-authentication;
+     *                         NOT_PROVIDED in a dry run
+     */
+    public record IssueSnapshot(UnitFacts unit, ReservationFacts reservation, Long scannedPatientId,
+            PatientBloodProfile profile, BloodBankRules rules, SecondCheckOutcome secondCheck) {
+    }
+
+    /** How the second person's re-authentication ended. */
+    public enum SecondCheckOutcome {
+        NOT_PROVIDED, VERIFIED, SAME_USER, UNKNOWN_USER, INACTIVE_USER, INVALID_CREDENTIALS, UNAVAILABLE
+    }
+
+    public static List<SafetyCheck> check(IssueSnapshot snapshot, Clock clock) {
+        Instant now = clock.instant();
+        UnitFacts unit = snapshot.unit();
+        List<SafetyCheck> checks = new ArrayList<>();
+        checks.add(unitStatus(unit));
+        checks.add(expiry(unit, now));
+        checks.add(patientMatch(unit, snapshot.reservation(), snapshot.scannedPatientId()));
+        checks.addAll(BloodCompatibility.check(unit.componentClass(), unit.abo(), unit.rhd(),
+                snapshot.profile() == null ? null : snapshot.profile().group(), snapshot.rules()));
+        checks.add(crossmatch(unit, snapshot.reservation(), snapshot.profile(), now));
+        checks.add(secondPerson(snapshot.secondCheck()));
+        return checks;
+    }
+
+    /** True when nothing failed and nothing is still pending. */
+    public static boolean allowsIssue(List<SafetyCheck> checks) {
+        return checks.stream().allMatch(SafetyCheck::passed);
+    }
+
+    /** True when at least one check passed with a warning, so a reason is due. */
+    public static boolean needsWarningReason(List<SafetyCheck> checks) {
+        return checks.stream().anyMatch(c -> c.status() == CheckStatus.WARN);
+    }
+
+    static SafetyCheck unitStatus(UnitFacts unit) {
+        if (unit.status() == UnitStatus.RESERVED) {
+            return SafetyCheck.pass(UNIT_STATUS, "bloodbank.check.unitStatus.reserved");
+        }
+        return SafetyCheck.fail(UNIT_STATUS, "bloodbank.check.unitStatus.notReserved", String.valueOf(unit.status()));
+    }
+
+    /**
+     * True when nothing failed; pending checks (the second person in a dry run) are
+     * not counted.
+     */
+    public static boolean nothingFailed(List<SafetyCheck> checks) {
+        return checks.stream().noneMatch(c -> c.status() == CheckStatus.FAIL);
+    }
+
+    public static SafetyCheck expiry(UnitFacts unit, Instant now) {
+        if (unit.expiresAt() != null && unit.expiresAt().isAfter(now)) {
+            return SafetyCheck.pass(EXPIRY, "bloodbank.check.expiry.ok", unit.expiresAt().toString());
+        }
+        return SafetyCheck.fail(EXPIRY, "bloodbank.check.expiry.expired", String.valueOf(unit.expiresAt()));
+    }
+
+    static SafetyCheck patientMatch(UnitFacts unit, ReservationFacts reservation, Long scannedPatientId) {
+        if (reservation == null || reservation.status() != ReservationStatus.ACTIVE) {
+            return SafetyCheck.fail(PATIENT_MATCH, "bloodbank.check.patient.noReservation");
+        }
+        if (scannedPatientId == null) {
+            return SafetyCheck.fail(PATIENT_MATCH, "bloodbank.check.patient.notIdentified");
+        }
+        if (!scannedPatientId.equals(reservation.patientId()) || !scannedPatientId.equals(unit.patientId())) {
+            return SafetyCheck.fail(PATIENT_MATCH, "bloodbank.check.patient.mismatch");
+        }
+        return SafetyCheck.pass(PATIENT_MATCH, "bloodbank.check.patient.ok");
+    }
+
+    static SafetyCheck crossmatch(UnitFacts unit, ReservationFacts reservation, PatientBloodProfile profile,
+            Instant now) {
+        if (!unit.needsCrossmatch()) {
+            return SafetyCheck.pass(CROSSMATCH, "bloodbank.check.crossmatch.notRequired");
+        }
+        if (reservation == null || reservation.crossmatchResultId() == null) {
+            return SafetyCheck.fail(CROSSMATCH, "bloodbank.check.crossmatch.missing");
+        }
+        // the profile lists only this patient's validated crossmatches
+        CrossmatchResult result = profile == null ? null : profile.crossmatch(reservation.crossmatchResultId());
+        if (result == null) {
+            return SafetyCheck.fail(CROSSMATCH, "bloodbank.check.crossmatch.notValidated");
+        }
+        if (!result.compatible()) {
+            return SafetyCheck.fail(CROSSMATCH, "bloodbank.check.crossmatch.incompatible", result.value());
+        }
+        if (result.validUntil() == null || !result.validUntil().isAfter(now)) {
+            return SafetyCheck.fail(CROSSMATCH, "bloodbank.check.crossmatch.expired",
+                    String.valueOf(result.validUntil()));
+        }
+        return SafetyCheck.pass(CROSSMATCH, "bloodbank.check.crossmatch.ok", result.validUntil().toString());
+    }
+
+    static SafetyCheck secondPerson(SecondCheckOutcome outcome) {
+        SecondCheckOutcome value = outcome == null ? SecondCheckOutcome.NOT_PROVIDED : outcome;
+        return switch (value) {
+        case VERIFIED -> SafetyCheck.pass(SECOND_PERSON, "bloodbank.check.secondPerson.verified");
+        case NOT_PROVIDED -> SafetyCheck.pending(SECOND_PERSON, "bloodbank.check.secondPerson.required");
+        case SAME_USER -> SafetyCheck.fail(SECOND_PERSON, "bloodbank.check.secondPerson.sameUser");
+        case UNKNOWN_USER, INVALID_CREDENTIALS ->
+            SafetyCheck.fail(SECOND_PERSON, "bloodbank.check.secondPerson.invalid");
+        case INACTIVE_USER -> SafetyCheck.fail(SECOND_PERSON, "bloodbank.check.secondPerson.inactive");
+        case UNAVAILABLE -> SafetyCheck.fail(SECOND_PERSON, "bloodbank.check.secondPerson.unavailable");
+        };
+    }
+}

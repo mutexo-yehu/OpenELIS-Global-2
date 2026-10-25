@@ -66,6 +66,13 @@
         <class>org.openelisglobal.inventory.valueholder.InventoryOrderCycle</class>
         <class>org.openelisglobal.inventory.valueholder.InventoryTag</class>
 
+        <!-- Blood product inventory entities -->
+        <class>org.openelisglobal.bloodbank.valueholder.BloodProductType</class>
+        <class>org.openelisglobal.bloodbank.valueholder.BloodProductCode</class>
+        <class>org.openelisglobal.bloodbank.valueholder.BloodUnit</class>
+        <class>org.openelisglobal.bloodbank.valueholder.BloodUnitReservation</class>
+        <class>org.openelisglobal.bloodbank.valueholder.BloodUnitEvent</class>
+
         <!-- Patient Merge Backend entities (008-patient-merge-backend) -->
         <class>org.openelisglobal.patient.merge.valueholder.PatientMergeAudit</class>
 

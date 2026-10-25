@@ -155,6 +155,13 @@
         <class>org.openelisglobal.inventory.valueholder.InventoryOrderCycle</class>
         <class>org.openelisglobal.inventory.valueholder.InventoryTag</class>
 
+        <!-- Blood product inventory entities -->
+        <class>org.openelisglobal.bloodbank.valueholder.BloodProductType</class>
+        <class>org.openelisglobal.bloodbank.valueholder.BloodProductCode</class>
+        <class>org.openelisglobal.bloodbank.valueholder.BloodUnit</class>
+        <class>org.openelisglobal.bloodbank.valueholder.BloodUnitReservation</class>
+        <class>org.openelisglobal.bloodbank.valueholder.BloodUnitEvent</class>
+
         <!-- Shipment Management entities (OGC-62) -->
         <class>org.openelisglobal.shipment.valueholder.ShippingBox</class>
         <class>org.openelisglobal.shipment.valueholder.Shipment</class>

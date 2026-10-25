@@ -1,0 +1,495 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Blood product inventory: blood components the lab stocks, one row per
+    physical unit, reservations of a unit for a patient, and an append-only
+    traceability trail of everything that happened to each unit.
+
+    Site-neutral: four generic component types are seeded, but no ISBT 128
+    product codes (the ICCBBA product database is licensed, so each site maps
+    its own codes), and the five test settings are empty until a site names its
+    own catalogue codes.
+
+    patient_id columns reference clinlims.patient. The crossmatch result is kept
+    as a plain id without a foreign key: results belong to the results module,
+    and a constraint here must never make an ordinary result edit fail.
+-->
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.8.xsd">
+
+    <changeSet id="bloodbank-001-product-type" author="openelisglobal">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists tableName="blood_product_type" schemaName="clinlims"/></not>
+        </preConditions>
+        <comment>Component classes the lab stocks</comment>
+        <createTable tableName="blood_product_type" schemaName="clinlims">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="code" type="VARCHAR(40)"><constraints nullable="false" unique="true" uniqueConstraintName="uq_blood_product_type_code"/></column>
+            <column name="name" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="component_class" type="VARCHAR(20)"><constraints nullable="false"/></column>
+            <column name="requires_crossmatch" type="BOOLEAN" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="is_active" type="BOOLEAN" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="last_updated" type="TIMESTAMP" defaultValueComputed="NOW()"/>
+        </createTable>
+        <sql>ALTER TABLE clinlims.blood_product_type ADD CONSTRAINT chk_blood_product_type_class
+            CHECK (component_class IN ('RED_CELLS', 'WHOLE_BLOOD', 'PLASMA', 'PLATELETS', 'CRYO'));</sql>
+        <createSequence sequenceName="blood_product_type_seq" schemaName="clinlims" startValue="1" incrementBy="1"/>
+        <rollback>
+            <dropSequence sequenceName="blood_product_type_seq" schemaName="clinlims"/>
+            <dropTable tableName="blood_product_type" schemaName="clinlims"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="bloodbank-002-product-code" author="openelisglobal">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists tableName="blood_product_code" schemaName="clinlims"/></not>
+        </preConditions>
+        <comment>ISBT 128 product code (or its leading characters) mapped to a component type</comment>
+        <createTable tableName="blood_product_code" schemaName="clinlims">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="isbt_code_prefix" type="VARCHAR(8)"><constraints nullable="false" unique="true" uniqueConstraintName="uq_blood_product_code_prefix"/></column>
+            <column name="product_type_id" type="BIGINT">
+                <constraints nullable="false" foreignKeyName="fk_blood_product_code_type" referencedTableSchemaName="clinlims" referencedTableName="blood_product_type" referencedColumnNames="id"/>
+            </column>
+            <column name="description" type="VARCHAR(255)"/>
+            <column name="is_active" type="BOOLEAN" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="last_updated" type="TIMESTAMP" defaultValueComputed="NOW()"/>
+        </createTable>
+        <createSequence sequenceName="blood_product_code_seq" schemaName="clinlims" startValue="1" incrementBy="1"/>
+        <rollback>
+            <dropSequence sequenceName="blood_product_code_seq" schemaName="clinlims"/>
+            <dropTable tableName="blood_product_code" schemaName="clinlims"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="bloodbank-003-unit" author="openelisglobal">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists tableName="blood_unit" schemaName="clinlims"/></not>
+        </preConditions>
+        <comment>One physical blood unit. A donation splits into several components, so the identity is DIN plus product code.</comment>
+        <createTable tableName="blood_unit" schemaName="clinlims">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="fhir_uuid" type="UUID"><constraints nullable="false" unique="true" uniqueConstraintName="uq_blood_unit_fhir_uuid"/></column>
+            <column name="donation_number" type="VARCHAR(13)"><constraints nullable="false"/></column>
+            <column name="product_code" type="VARCHAR(8)"><constraints nullable="false"/></column>
+            <column name="product_type_id" type="BIGINT">
+                <constraints nullable="false" foreignKeyName="fk_blood_unit_product_type" referencedTableSchemaName="clinlims" referencedTableName="blood_product_type" referencedColumnNames="id"/>
+            </column>
+            <column name="abo" type="VARCHAR(2)"><constraints nullable="false"/></column>
+            <column name="rhd" type="VARCHAR(3)"><constraints nullable="false"/></column>
+            <column name="expires_at" type="TIMESTAMP"><constraints nullable="false"/></column>
+            <column name="collected_at" type="TIMESTAMP"/>
+            <column name="supplier" type="VARCHAR(120)"/>
+            <column name="volume_ml" type="INT"/>
+            <column name="status" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="received_at" type="TIMESTAMP"><constraints nullable="false"/></column>
+            <column name="received_by" type="INT"><constraints nullable="false"/></column>
+            <column name="patient_id" type="NUMERIC(10,0)">
+                <constraints nullable="true" foreignKeyName="fk_blood_unit_patient" referencedTableSchemaName="clinlims" referencedTableName="patient" referencedColumnNames="id"/>
+            </column>
+            <column name="last_updated" type="TIMESTAMP" defaultValueComputed="NOW()"/>
+        </createTable>
+        <addUniqueConstraint schemaName="clinlims" tableName="blood_unit" columnNames="donation_number, product_code" constraintName="uq_blood_unit_din_product"/>
+        <sql>ALTER TABLE clinlims.blood_unit ADD CONSTRAINT chk_blood_unit_abo CHECK (abo IN ('O', 'A', 'B', 'AB'));</sql>
+        <sql>ALTER TABLE clinlims.blood_unit ADD CONSTRAINT chk_blood_unit_rhd CHECK (rhd IN ('POS', 'NEG'));</sql>
+        <sql>ALTER TABLE clinlims.blood_unit ADD CONSTRAINT chk_blood_unit_status
+            CHECK (status IN ('AVAILABLE', 'QUARANTINED', 'RESERVED', 'ISSUED', 'TRANSFUSED', 'DISCARDED', 'RETURNED_TO_SUPPLIER'));</sql>
+        <createIndex indexName="idx_blood_unit_status" tableName="blood_unit" schemaName="clinlims">
+            <column name="status"/>
+        </createIndex>
+        <createIndex indexName="idx_blood_unit_patient" tableName="blood_unit" schemaName="clinlims">
+            <column name="patient_id"/>
+        </createIndex>
+        <createSequence sequenceName="blood_unit_seq" schemaName="clinlims" startValue="1" incrementBy="1"/>
+        <rollback>
+            <dropSequence sequenceName="blood_unit_seq" schemaName="clinlims"/>
+            <dropTable tableName="blood_unit" schemaName="clinlims"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="bloodbank-004-reservation" author="openelisglobal">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists tableName="blood_unit_reservation" schemaName="clinlims"/></not>
+        </preConditions>
+        <comment>A unit held for a patient, with the validated crossmatch result that covers it (none for plasma, platelets and cryo)</comment>
+        <createTable tableName="blood_unit_reservation" schemaName="clinlims">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="unit_id" type="BIGINT">
+                <constraints nullable="false" foreignKeyName="fk_blood_reservation_unit" referencedTableSchemaName="clinlims" referencedTableName="blood_unit" referencedColumnNames="id"/>
+            </column>
+            <column name="patient_id" type="NUMERIC(10,0)">
+                <constraints nullable="false" foreignKeyName="fk_blood_reservation_patient" referencedTableSchemaName="clinlims" referencedTableName="patient" referencedColumnNames="id"/>
+            </column>
+            <column name="crossmatch_result_id" type="NUMERIC(10,0)"/>
+            <column name="crossmatch_valid_until" type="TIMESTAMP"/>
+            <column name="status" type="VARCHAR(12)"><constraints nullable="false"/></column>
+            <column name="reserved_by" type="INT"><constraints nullable="false"/></column>
+            <column name="reserved_at" type="TIMESTAMP"><constraints nullable="false"/></column>
+            <column name="issued_at" type="TIMESTAMP"/>
+            <column name="closed_at" type="TIMESTAMP"/>
+            <column name="last_updated" type="TIMESTAMP" defaultValueComputed="NOW()"/>
+        </createTable>
+        <sql>ALTER TABLE clinlims.blood_unit_reservation ADD CONSTRAINT chk_blood_reservation_status
+            CHECK (status IN ('ACTIVE', 'ISSUED', 'RELEASED', 'EXPIRED'));</sql>
+        <!-- one live reservation per unit, and one crossmatch result covers one unit only -->
+        <sql>CREATE UNIQUE INDEX uq_blood_reservation_active_unit ON clinlims.blood_unit_reservation (unit_id) WHERE status = 'ACTIVE';</sql>
+        <sql>CREATE UNIQUE INDEX uq_blood_reservation_crossmatch ON clinlims.blood_unit_reservation (crossmatch_result_id)
+            WHERE crossmatch_result_id IS NOT NULL AND status IN ('ACTIVE', 'ISSUED');</sql>
+        <createIndex indexName="idx_blood_reservation_patient" tableName="blood_unit_reservation" schemaName="clinlims">
+            <column name="patient_id"/>
+        </createIndex>
+        <createSequence sequenceName="blood_unit_reservation_seq" schemaName="clinlims" startValue="1" incrementBy="1"/>
+        <rollback>
+            <dropSequence sequenceName="blood_unit_reservation_seq" schemaName="clinlims"/>
+            <dropTable tableName="blood_unit_reservation" schemaName="clinlims"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="bloodbank-005-event" author="openelisglobal">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists tableName="blood_unit_event" schemaName="clinlims"/></not>
+        </preConditions>
+        <comment>Append-only traceability trail: one row per thing that happened to a unit</comment>
+        <createTable tableName="blood_unit_event" schemaName="clinlims">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="unit_id" type="BIGINT">
+                <constraints nullable="false" foreignKeyName="fk_blood_event_unit" referencedTableSchemaName="clinlims" referencedTableName="blood_unit" referencedColumnNames="id"/>
+            </column>
+            <column name="event_type" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="patient_id" type="NUMERIC(10,0)">
+                <constraints nullable="true" foreignKeyName="fk_blood_event_patient" referencedTableSchemaName="clinlims" referencedTableName="patient" referencedColumnNames="id"/>
+            </column>
+            <column name="reservation_id" type="BIGINT">
+                <constraints nullable="true" foreignKeyName="fk_blood_event_reservation" referencedTableSchemaName="clinlims" referencedTableName="blood_unit_reservation" referencedColumnNames="id"/>
+            </column>
+            <column name="performed_by" type="INT"><constraints nullable="false"/></column>
+            <column name="second_checker_id" type="INT"/>
+            <column name="occurred_at" type="TIMESTAMP"><constraints nullable="false"/></column>
+            <column name="reason" type="VARCHAR(500)"/>
+            <column name="location" type="VARCHAR(120)"/>
+            <column name="collector_name" type="VARCHAR(120)"/>
+            <column name="details" type="TEXT"/>
+            <column name="last_updated" type="TIMESTAMP" defaultValueComputed="NOW()"/>
+        </createTable>
+        <sql>ALTER TABLE clinlims.blood_unit_event ADD CONSTRAINT chk_blood_event_type
+            CHECK (event_type IN ('RECEIVED', 'QUARANTINED', 'RELEASED', 'RESERVED', 'UNRESERVED', 'ISSUED', 'RETURNED',
+                                  'TRANSFUSED', 'REACTION', 'DISCARDED', 'RETURNED_TO_SUPPLIER'));</sql>
+        <createIndex indexName="idx_blood_event_unit" tableName="blood_unit_event" schemaName="clinlims">
+            <column name="unit_id"/>
+        </createIndex>
+        <createIndex indexName="idx_blood_event_patient" tableName="blood_unit_event" schemaName="clinlims">
+            <column name="patient_id"/>
+        </createIndex>
+        <createSequence sequenceName="blood_unit_event_seq" schemaName="clinlims" startValue="1" incrementBy="1"/>
+        <rollback>
+            <dropSequence sequenceName="blood_unit_event_seq" schemaName="clinlims"/>
+            <dropTable tableName="blood_unit_event" schemaName="clinlims"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="bloodbank-006-event-append-only" author="openelisglobal">
+        <comment>The trail cannot be edited or deleted row by row, whatever path the change comes from. TRUNCATE (whole-database resets) is not blocked.</comment>
+        <sql splitStatements="false">
+            CREATE OR REPLACE FUNCTION clinlims.blood_unit_event_append_only() RETURNS trigger AS $$
+            BEGIN
+                RAISE EXCEPTION 'blood_unit_event is append-only: % refused', TG_OP;
+            END;
+            $$ LANGUAGE plpgsql;
+        </sql>
+        <sql>CREATE TRIGGER blood_unit_event_no_update_delete BEFORE UPDATE OR DELETE ON clinlims.blood_unit_event
+            FOR EACH ROW EXECUTE FUNCTION clinlims.blood_unit_event_append_only();</sql>
+        <rollback>
+            <sql>DROP TRIGGER IF EXISTS blood_unit_event_no_update_delete ON clinlims.blood_unit_event;</sql>
+            <sql>DROP FUNCTION IF EXISTS clinlims.blood_unit_event_append_only();</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="bloodbank-007-seed-product-types" author="openelisglobal">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.blood_product_type</sqlCheck>
+        </preConditions>
+        <comment>Four generic component types; sites add their own and map their ISBT 128 product codes to them</comment>
+        <insert tableName="blood_product_type" schemaName="clinlims">
+            <column name="id" valueSequenceNext="blood_product_type_seq"/>
+            <column name="code" value="RED_CELLS"/>
+            <column name="name" value="Red cells"/>
+            <column name="component_class" value="RED_CELLS"/>
+            <column name="requires_crossmatch" valueBoolean="true"/>
+            <column name="is_active" valueBoolean="true"/>
+        </insert>
+        <insert tableName="blood_product_type" schemaName="clinlims">
+            <column name="id" valueSequenceNext="blood_product_type_seq"/>
+            <column name="code" value="FFP"/>
+            <column name="name" value="Fresh frozen plasma"/>
+            <column name="component_class" value="PLASMA"/>
+            <column name="requires_crossmatch" valueBoolean="false"/>
+            <column name="is_active" valueBoolean="true"/>
+        </insert>
+        <insert tableName="blood_product_type" schemaName="clinlims">
+            <column name="id" valueSequenceNext="blood_product_type_seq"/>
+            <column name="code" value="PLATELETS"/>
+            <column name="name" value="Platelets"/>
+            <column name="component_class" value="PLATELETS"/>
+            <column name="requires_crossmatch" valueBoolean="false"/>
+            <column name="is_active" valueBoolean="true"/>
+        </insert>
+        <insert tableName="blood_product_type" schemaName="clinlims">
+            <column name="id" valueSequenceNext="blood_product_type_seq"/>
+            <column name="code" value="CRYO"/>
+            <column name="name" value="Cryoprecipitate"/>
+            <column name="component_class" value="CRYO"/>
+            <column name="requires_crossmatch" valueBoolean="false"/>
+            <column name="is_active" valueBoolean="true"/>
+        </insert>
+        <rollback>
+            <delete tableName="blood_product_type" schemaName="clinlims">
+                <where>code IN ('RED_CELLS', 'FFP', 'PLATELETS', 'CRYO')</where>
+            </delete>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="bloodbank-008-settings-domain" author="openelisglobal">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.site_information_domain WHERE name = 'bloodBank'</sqlCheck>
+        </preConditions>
+        <insert tableName="site_information_domain" schemaName="clinlims">
+            <column name="id" valueSequenceNext="site_information_domain_seq"/>
+            <column name="name" value="bloodBank"/>
+            <column name="description" value="Blood product inventory: result tests read, validity windows and clinical rules"/>
+        </insert>
+        <rollback>
+            <delete tableName="site_information_domain" schemaName="clinlims"><where>name = 'bloodBank'</where></delete>
+        </rollback>
+    </changeSet>
+
+    <!-- One changeset per setting, each guarded, so a site that already has one keeps its value -->
+    <changeSet id="bloodbank-009-setting-test-abo" author="openelisglobal">
+        <preConditions onFail="MARK_RAN"><sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.site_information WHERE name = 'bloodbank.test.abo'</sqlCheck></preConditions>
+        <insert tableName="site_information" schemaName="clinlims">
+            <column name="id" valueSequenceNext="site_information_seq"/>
+            <column name="name" value="bloodbank.test.abo"/>
+            <column name="description" value="Catalogue code (local code) of the ABO grouping test"/>
+            <column name="value" value=""/>
+            <column name="value_type" value="text"/>
+            <column name="domain_id" valueComputed="(SELECT id FROM clinlims.site_information_domain WHERE name = 'bloodBank')"/>
+            <column name="lastupdated" valueDate="now()"/>
+        </insert>
+        <rollback><delete tableName="site_information" schemaName="clinlims"><where>name = 'bloodbank.test.abo'</where></delete></rollback>
+    </changeSet>
+    <changeSet id="bloodbank-010-setting-test-rhd" author="openelisglobal">
+        <preConditions onFail="MARK_RAN"><sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.site_information WHERE name = 'bloodbank.test.rhd'</sqlCheck></preConditions>
+        <insert tableName="site_information" schemaName="clinlims">
+            <column name="id" valueSequenceNext="site_information_seq"/>
+            <column name="name" value="bloodbank.test.rhd"/>
+            <column name="description" value="Catalogue code (local code) of the RhD typing test"/>
+            <column name="value" value=""/>
+            <column name="value_type" value="text"/>
+            <column name="domain_id" valueComputed="(SELECT id FROM clinlims.site_information_domain WHERE name = 'bloodBank')"/>
+            <column name="lastupdated" valueDate="now()"/>
+        </insert>
+        <rollback><delete tableName="site_information" schemaName="clinlims"><where>name = 'bloodbank.test.rhd'</where></delete></rollback>
+    </changeSet>
+    <changeSet id="bloodbank-011-setting-test-antibody-screen" author="openelisglobal">
+        <preConditions onFail="MARK_RAN"><sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.site_information WHERE name = 'bloodbank.test.antibodyScreen'</sqlCheck></preConditions>
+        <insert tableName="site_information" schemaName="clinlims">
+            <column name="id" valueSequenceNext="site_information_seq"/>
+            <column name="name" value="bloodbank.test.antibodyScreen"/>
+            <column name="description" value="Catalogue code (local code) of the antibody screen test"/>
+            <column name="value" value=""/>
+            <column name="value_type" value="text"/>
+            <column name="domain_id" valueComputed="(SELECT id FROM clinlims.site_information_domain WHERE name = 'bloodBank')"/>
+            <column name="lastupdated" valueDate="now()"/>
+        </insert>
+        <rollback><delete tableName="site_information" schemaName="clinlims"><where>name = 'bloodbank.test.antibodyScreen'</where></delete></rollback>
+    </changeSet>
+    <changeSet id="bloodbank-012-setting-test-dat" author="openelisglobal">
+        <preConditions onFail="MARK_RAN"><sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.site_information WHERE name = 'bloodbank.test.dat'</sqlCheck></preConditions>
+        <insert tableName="site_information" schemaName="clinlims">
+            <column name="id" valueSequenceNext="site_information_seq"/>
+            <column name="name" value="bloodbank.test.dat"/>
+            <column name="description" value="Catalogue code (local code) of the direct antiglobulin test"/>
+            <column name="value" value=""/>
+            <column name="value_type" value="text"/>
+            <column name="domain_id" valueComputed="(SELECT id FROM clinlims.site_information_domain WHERE name = 'bloodBank')"/>
+            <column name="lastupdated" valueDate="now()"/>
+        </insert>
+        <rollback><delete tableName="site_information" schemaName="clinlims"><where>name = 'bloodbank.test.dat'</where></delete></rollback>
+    </changeSet>
+    <changeSet id="bloodbank-013-setting-test-crossmatch" author="openelisglobal">
+        <preConditions onFail="MARK_RAN"><sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.site_information WHERE name = 'bloodbank.test.crossmatch'</sqlCheck></preConditions>
+        <insert tableName="site_information" schemaName="clinlims">
+            <column name="id" valueSequenceNext="site_information_seq"/>
+            <column name="name" value="bloodbank.test.crossmatch"/>
+            <column name="description" value="Catalogue code (local code) of the crossmatch test"/>
+            <column name="value" value=""/>
+            <column name="value_type" value="text"/>
+            <column name="domain_id" valueComputed="(SELECT id FROM clinlims.site_information_domain WHERE name = 'bloodBank')"/>
+            <column name="lastupdated" valueDate="now()"/>
+        </insert>
+        <rollback><delete tableName="site_information" schemaName="clinlims"><where>name = 'bloodbank.test.crossmatch'</where></delete></rollback>
+    </changeSet>
+    <changeSet id="bloodbank-014-setting-crossmatch-compatible-values" author="openelisglobal">
+        <preConditions onFail="MARK_RAN"><sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.site_information WHERE name = 'bloodbank.crossmatch.compatibleValues'</sqlCheck></preConditions>
+        <insert tableName="site_information" schemaName="clinlims">
+            <column name="id" valueSequenceNext="site_information_seq"/>
+            <column name="name" value="bloodbank.crossmatch.compatibleValues"/>
+            <column name="description" value="Crossmatch result values that mean compatible, separated by commas"/>
+            <column name="value" value="Compatible"/>
+            <column name="value_type" value="text"/>
+            <column name="domain_id" valueComputed="(SELECT id FROM clinlims.site_information_domain WHERE name = 'bloodBank')"/>
+            <column name="lastupdated" valueDate="now()"/>
+        </insert>
+        <rollback><delete tableName="site_information" schemaName="clinlims"><where>name = 'bloodbank.crossmatch.compatibleValues'</where></delete></rollback>
+    </changeSet>
+    <changeSet id="bloodbank-015-setting-crossmatch-valid-hours" author="openelisglobal">
+        <preConditions onFail="MARK_RAN"><sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.site_information WHERE name = 'bloodbank.crossmatch.validHours'</sqlCheck></preConditions>
+        <insert tableName="site_information" schemaName="clinlims">
+            <column name="id" valueSequenceNext="site_information_seq"/>
+            <column name="name" value="bloodbank.crossmatch.validHours"/>
+            <column name="description" value="Hours a crossmatch stays valid, counted from the collection of its sample"/>
+            <column name="value" value="72"/>
+            <column name="value_type" value="text"/>
+            <column name="domain_id" valueComputed="(SELECT id FROM clinlims.site_information_domain WHERE name = 'bloodBank')"/>
+            <column name="lastupdated" valueDate="now()"/>
+        </insert>
+        <rollback><delete tableName="site_information" schemaName="clinlims"><where>name = 'bloodbank.crossmatch.validHours'</where></delete></rollback>
+    </changeSet>
+    <changeSet id="bloodbank-016-setting-expiry-warn-hours" author="openelisglobal">
+        <preConditions onFail="MARK_RAN"><sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.site_information WHERE name = 'bloodbank.expiry.warnHours'</sqlCheck></preConditions>
+        <insert tableName="site_information" schemaName="clinlims">
+            <column name="id" valueSequenceNext="site_information_seq"/>
+            <column name="name" value="bloodbank.expiry.warnHours"/>
+            <column name="description" value="Units expiring within this many hours are flagged on the stock board"/>
+            <column name="value" value="48"/>
+            <column name="value_type" value="text"/>
+            <column name="domain_id" valueComputed="(SELECT id FROM clinlims.site_information_domain WHERE name = 'bloodBank')"/>
+            <column name="lastupdated" valueDate="now()"/>
+        </insert>
+        <rollback><delete tableName="site_information" schemaName="clinlims"><where>name = 'bloodbank.expiry.warnHours'</where></delete></rollback>
+    </changeSet>
+    <changeSet id="bloodbank-017-setting-return-window" author="openelisglobal">
+        <preConditions onFail="MARK_RAN"><sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.site_information WHERE name = 'bloodbank.return.windowMinutes'</sqlCheck></preConditions>
+        <insert tableName="site_information" schemaName="clinlims">
+            <column name="id" valueSequenceNext="site_information_seq"/>
+            <column name="name" value="bloodbank.return.windowMinutes"/>
+            <column name="description" value="An issued unit returned within this many minutes goes back to stock; later, it is discarded"/>
+            <column name="value" value="30"/>
+            <column name="value_type" value="text"/>
+            <column name="domain_id" valueComputed="(SELECT id FROM clinlims.site_information_domain WHERE name = 'bloodBank')"/>
+            <column name="lastupdated" valueDate="now()"/>
+        </insert>
+        <rollback><delete tableName="site_information" schemaName="clinlims"><where>name = 'bloodbank.return.windowMinutes'</where></delete></rollback>
+    </changeSet>
+    <changeSet id="bloodbank-018-setting-rule-two-sample" author="openelisglobal">
+        <preConditions onFail="MARK_RAN"><sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.site_information WHERE name = 'bloodbank.rule.twoSampleGroup'</sqlCheck></preConditions>
+        <insert tableName="site_information" schemaName="clinlims">
+            <column name="id" valueSequenceNext="site_information_seq"/>
+            <column name="name" value="bloodbank.rule.twoSampleGroup"/>
+            <column name="description" value="A patient's group counts as confirmed only after concordant results on two different samples"/>
+            <column name="value" value="true"/>
+            <column name="value_type" value="boolean"/>
+            <column name="domain_id" valueComputed="(SELECT id FROM clinlims.site_information_domain WHERE name = 'bloodBank')"/>
+            <column name="lastupdated" valueDate="now()"/>
+        </insert>
+        <rollback><delete tableName="site_information" schemaName="clinlims"><where>name = 'bloodbank.rule.twoSampleGroup'</where></delete></rollback>
+    </changeSet>
+    <changeSet id="bloodbank-019-setting-rule-rhneg-rhpos-platelets" author="openelisglobal">
+        <preConditions onFail="MARK_RAN"><sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.site_information WHERE name = 'bloodbank.rule.rhdNegPatientRhdPosPlatelets'</sqlCheck></preConditions>
+        <insert tableName="site_information" schemaName="clinlims">
+            <column name="id" valueSequenceNext="site_information_seq"/>
+            <column name="name" value="bloodbank.rule.rhdNegPatientRhdPosPlatelets"/>
+            <column name="description" value="RhD-positive platelets for an RhD-negative patient: ALLOW, WARN (a reason is required at issue) or BLOCK"/>
+            <column name="value" value="WARN"/>
+            <column name="value_type" value="text"/>
+            <column name="domain_id" valueComputed="(SELECT id FROM clinlims.site_information_domain WHERE name = 'bloodBank')"/>
+            <column name="lastupdated" valueDate="now()"/>
+        </insert>
+        <rollback><delete tableName="site_information" schemaName="clinlims"><where>name = 'bloodbank.rule.rhdNegPatientRhdPosPlatelets'</where></delete></rollback>
+    </changeSet>
+    <changeSet id="bloodbank-020-setting-rule-unconfirmed-group-o-red-cells" author="openelisglobal">
+        <preConditions onFail="MARK_RAN"><sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.site_information WHERE name = 'bloodbank.rule.unconfirmedGroupORedCells'</sqlCheck></preConditions>
+        <insert tableName="site_information" schemaName="clinlims">
+            <column name="id" valueSequenceNext="site_information_seq"/>
+            <column name="name" value="bloodbank.rule.unconfirmedGroupORedCells"/>
+            <column name="description" value="Group O red cells for a patient whose group is not confirmed: ALLOW, WARN (a reason is required at issue) or BLOCK"/>
+            <column name="value" value="BLOCK"/>
+            <column name="value_type" value="text"/>
+            <column name="domain_id" valueComputed="(SELECT id FROM clinlims.site_information_domain WHERE name = 'bloodBank')"/>
+            <column name="lastupdated" valueDate="now()"/>
+        </insert>
+        <rollback><delete tableName="site_information" schemaName="clinlims"><where>name = 'bloodbank.rule.unconfirmedGroupORedCells'</where></delete></rollback>
+    </changeSet>
+
+    <changeSet id="bloodbank-021-menu" author="openelisglobal">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.menu WHERE element_id = 'menu_bloodbank'</sqlCheck>
+        </preConditions>
+        <comment>Top-level Blood Bank menu with its four pages. Rows are visible to every signed-in user; each page's route and REST guards gate access.</comment>
+        <insert tableName="menu" schemaName="clinlims">
+            <column name="id" valueSequenceNext="menu_seq"/>
+            <column name="presentation_order" value="128"/>
+            <column name="element_id" value="menu_bloodbank"/>
+            <column name="action_url" value=""/>
+            <column name="display_key" value="banner.menu.bloodbank"/>
+            <column name="tool_tip_key" value="banner.menu.bloodbank"/>
+            <column name="new_window" valueBoolean="false"/>
+            <column name="is_active" valueBoolean="true"/>
+            <column name="hide_in_old_ui" valueBoolean="true"/>
+        </insert>
+        <insert tableName="menu" schemaName="clinlims">
+            <column name="id" valueSequenceNext="menu_seq"/>
+            <column name="parent_id" valueComputed="(SELECT id FROM clinlims.menu WHERE element_id = 'menu_bloodbank')"/>
+            <column name="presentation_order" value="10"/>
+            <column name="element_id" value="menu_bloodbank_stock"/>
+            <column name="action_url" value="/bloodbank/stock"/>
+            <column name="display_key" value="banner.menu.bloodbank.stock"/>
+            <column name="tool_tip_key" value="banner.menu.bloodbank.stock"/>
+            <column name="new_window" valueBoolean="false"/>
+            <column name="is_active" valueBoolean="true"/>
+            <column name="hide_in_old_ui" valueBoolean="true"/>
+        </insert>
+        <insert tableName="menu" schemaName="clinlims">
+            <column name="id" valueSequenceNext="menu_seq"/>
+            <column name="parent_id" valueComputed="(SELECT id FROM clinlims.menu WHERE element_id = 'menu_bloodbank')"/>
+            <column name="presentation_order" value="20"/>
+            <column name="element_id" value="menu_bloodbank_receive"/>
+            <column name="action_url" value="/bloodbank/receive"/>
+            <column name="display_key" value="banner.menu.bloodbank.receive"/>
+            <column name="tool_tip_key" value="banner.menu.bloodbank.receive"/>
+            <column name="new_window" valueBoolean="false"/>
+            <column name="is_active" valueBoolean="true"/>
+            <column name="hide_in_old_ui" valueBoolean="true"/>
+        </insert>
+        <insert tableName="menu" schemaName="clinlims">
+            <column name="id" valueSequenceNext="menu_seq"/>
+            <column name="parent_id" valueComputed="(SELECT id FROM clinlims.menu WHERE element_id = 'menu_bloodbank')"/>
+            <column name="presentation_order" value="30"/>
+            <column name="element_id" value="menu_bloodbank_issue"/>
+            <column name="action_url" value="/bloodbank/issue"/>
+            <column name="display_key" value="banner.menu.bloodbank.issue"/>
+            <column name="tool_tip_key" value="banner.menu.bloodbank.issue"/>
+            <column name="new_window" valueBoolean="false"/>
+            <column name="is_active" valueBoolean="true"/>
+            <column name="hide_in_old_ui" valueBoolean="true"/>
+        </insert>
+        <insert tableName="menu" schemaName="clinlims">
+            <column name="id" valueSequenceNext="menu_seq"/>
+            <column name="parent_id" valueComputed="(SELECT id FROM clinlims.menu WHERE element_id = 'menu_bloodbank')"/>
+            <column name="presentation_order" value="40"/>
+            <column name="element_id" value="menu_bloodbank_trace"/>
+            <column name="action_url" value="/bloodbank/trace"/>
+            <column name="display_key" value="banner.menu.bloodbank.trace"/>
+            <column name="tool_tip_key" value="banner.menu.bloodbank.trace"/>
+            <column name="new_window" valueBoolean="false"/>
+            <column name="is_active" valueBoolean="true"/>
+            <column name="hide_in_old_ui" valueBoolean="true"/>
+        </insert>
+        <rollback>
+            <delete tableName="menu" schemaName="clinlims">
+                <where>element_id IN ('menu_bloodbank_stock', 'menu_bloodbank_receive', 'menu_bloodbank_issue', 'menu_bloodbank_trace')</where>
+            </delete>
+            <delete tableName="menu" schemaName="clinlims"><where>element_id = 'menu_bloodbank'</where></delete>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>
