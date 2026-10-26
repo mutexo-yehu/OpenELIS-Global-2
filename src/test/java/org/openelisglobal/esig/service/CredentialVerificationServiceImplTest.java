@@ -65,6 +65,16 @@ public class CredentialVerificationServiceImplTest {
     }
 
     @Test
+    public void otherModulesReachTheCodeCheckThroughTheOneTimeCodeInterface() {
+        // a module that needs the code check (a second-person check) finds this bean by
+        // that interface
+        OneTimeCodeCredentialVerifier codes = service;
+
+        assertEquals(AuthMethod.KEYCLOAK, codes.verifyCredentialsByLoginName("sci1", "secret", "123456"));
+        verify(keycloakCredentialVerifier).verify("sci1", "secret", "123456");
+    }
+
+    @Test
     public void aLocalPasswordCannotStandInForSingleSignOn() {
         // even if sci1 still had a local password, signing goes through Keycloak (MFA)
         localPasswordIsValid("sci1", "old-local");

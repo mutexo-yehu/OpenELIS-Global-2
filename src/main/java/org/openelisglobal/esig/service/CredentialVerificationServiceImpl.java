@@ -21,7 +21,7 @@ import org.springframework.stereotype.Service;
  * authenticator code), see {@link KeycloakCredentialVerifier}.
  */
 @Service
-public class CredentialVerificationServiceImpl implements CredentialVerificationService {
+public class CredentialVerificationServiceImpl implements CredentialVerificationService, OneTimeCodeCredentialVerifier {
 
     @Autowired
     private LoginUserService loginUserService;
