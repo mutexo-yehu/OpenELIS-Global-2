@@ -44,6 +44,12 @@ import {
   InventoryReceivePage,
   InventoryReportsPage,
 } from "./components/inventory/InventoryManagement";
+import {
+  BloodBankIssuePage,
+  BloodBankReceivePage,
+  BloodBankStockPage,
+  BloodBankTracePage,
+} from "./components/bloodBank/BloodBankPages";
 import ShipmentDashboard from "./components/shipment/ShipmentDashboard";
 import BoxCreation from "./components/shipment/BoxCreation";
 import BoxDetails from "./components/shipment/BoxDetails";
@@ -1394,6 +1400,30 @@ export default function App() {
                   exact
                   render={() => <InventoryItemsPage />}
                   role={[Roles.RESULTS, Roles.GLOBAL_ADMIN]}
+                />
+                <SecureRoute
+                  path="/bloodbank/stock"
+                  exact
+                  render={() => <BloodBankStockPage />}
+                  role={[Roles.RESULTS, Roles.VALIDATION, Roles.GLOBAL_ADMIN]}
+                />
+                <SecureRoute
+                  path="/bloodbank/receive"
+                  exact
+                  render={() => <BloodBankReceivePage />}
+                  role={[Roles.RESULTS, Roles.VALIDATION, Roles.GLOBAL_ADMIN]}
+                />
+                <SecureRoute
+                  path="/bloodbank/issue"
+                  exact
+                  render={() => <BloodBankIssuePage />}
+                  role={[Roles.RESULTS, Roles.VALIDATION, Roles.GLOBAL_ADMIN]}
+                />
+                <SecureRoute
+                  path="/bloodbank/trace"
+                  exact
+                  render={() => <BloodBankTracePage />}
+                  role={[Roles.RESULTS, Roles.VALIDATION, Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/SampleShipment"

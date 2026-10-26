@@ -13,6 +13,7 @@ import { Roles } from "../utils/Utils";
  * Built on call, not on import, so modules that are mocked in tests aren't read early.
  */
 export function buildRoutes() {
+  const ANALYZER_SETUP_ROLES = [Roles.GLOBAL_ADMIN];
   const QC_ROLES = [Roles.GLOBAL_ADMIN, Roles.ANALYSER_IMPORT];
   const ANALYZER_RESULTS_ROLES = [Roles.GLOBAL_ADMIN, Roles.ANALYSER_IMPORT];
   return [
@@ -593,10 +594,46 @@ export function buildRoutes() {
       role: [Roles.RECEPTION, Roles.RESULTS, Roles.GLOBAL_ADMIN],
     },
     {
+      path: "/inventory/receive",
+      exact: true,
+      guarded: true,
+      role: [Roles.RESULTS, Roles.GLOBAL_ADMIN],
+    },
+    {
+      path: "/inventory/reports",
+      exact: true,
+      guarded: true,
+      role: [Roles.RESULTS, Roles.GLOBAL_ADMIN],
+    },
+    {
       path: "/inventory",
       exact: true,
       guarded: true,
       role: [Roles.RESULTS, Roles.GLOBAL_ADMIN],
+    },
+    {
+      path: "/bloodbank/stock",
+      exact: true,
+      guarded: true,
+      role: [Roles.RESULTS, Roles.VALIDATION, Roles.GLOBAL_ADMIN],
+    },
+    {
+      path: "/bloodbank/receive",
+      exact: true,
+      guarded: true,
+      role: [Roles.RESULTS, Roles.VALIDATION, Roles.GLOBAL_ADMIN],
+    },
+    {
+      path: "/bloodbank/issue",
+      exact: true,
+      guarded: true,
+      role: [Roles.RESULTS, Roles.VALIDATION, Roles.GLOBAL_ADMIN],
+    },
+    {
+      path: "/bloodbank/trace",
+      exact: true,
+      guarded: true,
+      role: [Roles.RESULTS, Roles.VALIDATION, Roles.GLOBAL_ADMIN],
     },
     {
       path: "/SampleShipment",
@@ -656,19 +693,31 @@ export function buildRoutes() {
       path: "/analyzers",
       exact: true,
       guarded: true,
-      role: [Roles.ANALYSER_IMPORT, Roles.GLOBAL_ADMIN],
+      role: ANALYZER_SETUP_ROLES,
     },
     {
       path: "/analyzers/types",
       exact: true,
       guarded: true,
-      role: [Roles.ANALYSER_IMPORT, Roles.GLOBAL_ADMIN],
+      role: ANALYZER_SETUP_ROLES,
     },
     {
       path: "/analyzers/types/:profileId/mapping",
       exact: true,
       guarded: true,
-      role: Roles.ANALYSER_IMPORT,
+      role: ANALYZER_SETUP_ROLES,
+    },
+    {
+      path: "/analyzers/:analyzerId/mapping",
+      exact: true,
+      guarded: true,
+      role: ANALYZER_SETUP_ROLES,
+    },
+    {
+      path: "/analyzers/:analyzerId/adoption",
+      exact: true,
+      guarded: true,
+      role: ANALYZER_SETUP_ROLES,
     },
     {
       path: "/analyzers/qc/instruments/:instrumentId",
@@ -750,27 +799,18 @@ export function buildRoutes() {
       role: Roles.RESULTS,
     },
     { path: "/Results", exact: true, guarded: true, role: Roles.RESULTS },
-    { path: "/result", exact: true, guarded: true, role: Roles.RESULTS },
     {
-      path: "/LogbookResults",
+      path: [
+        "/result",
+        "/LogbookResults",
+        "/PatientResults",
+        "/AccessionResults",
+        "/StatusResults",
+        "/RangeResults",
+      ],
       exact: true,
-      guarded: true,
-      role: Roles.RESULTS,
+      guarded: false,
     },
-    {
-      path: "/PatientResults",
-      exact: true,
-      guarded: true,
-      role: Roles.RESULTS,
-    },
-    {
-      path: "/AccessionResults",
-      exact: true,
-      guarded: true,
-      role: Roles.RESULTS,
-    },
-    { path: "/StatusResults", exact: true, guarded: true, role: Roles.RESULTS },
-    { path: "/RangeResults", exact: true, guarded: true, role: Roles.RESULTS },
     {
       path: "/RoutineReports",
       exact: true,
@@ -796,6 +836,18 @@ export function buildRoutes() {
       role: Roles.REPORTS,
     },
     { path: "/LaporanHasil", exact: true, guarded: true, role: Roles.REPORTS },
+    {
+      path: "/ReportPrintQueue",
+      exact: true,
+      guarded: true,
+      role: Roles.REPORTS,
+    },
+    {
+      path: "/SentMessages",
+      exact: true,
+      guarded: true,
+      role: [Roles.REPORTS, Roles.GLOBAL_ADMIN],
+    },
     {
       path: "/VectorManualEntry",
       exact: true,

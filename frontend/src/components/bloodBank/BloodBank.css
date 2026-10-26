@@ -1,0 +1,73 @@
+.bb-section {
+  margin-top: 1.5rem;
+}
+
+.bb-helper {
+  margin-bottom: 1rem;
+}
+
+.bb-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+  margin-bottom: 1rem;
+}
+
+.bb-row > * {
+  min-width: 12rem;
+}
+
+.bb-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.bb-tiles .cds--tile {
+  min-width: 14rem;
+}
+
+.bb-tile-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.bb-checklist ul {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 1rem;
+}
+
+.bb-checklist li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.bb-check-pass svg {
+  fill: var(--cds-support-success, #24a148);
+}
+
+.bb-check-warn svg {
+  fill: var(--cds-support-warning, #f1c21b);
+}
+
+.bb-check-fail svg {
+  fill: var(--cds-support-error, #da1e28);
+}
+
+.bb-check-pending svg {
+  fill: var(--cds-icon-secondary, #525252);
+}
+
+.bb-check-fail {
+  font-weight: 600;
+}
+
+.bb-disabled {
+  opacity: 0.6;
+}

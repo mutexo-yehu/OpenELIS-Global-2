@@ -1,0 +1,196 @@
+import React from "react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { waitFor } from "@testing-library/dom";
+import "@testing-library/jest-dom";
+import { IntlProvider } from "react-intl";
+import IssueModal, { dinKey } from "./IssueModal";
+import BloodBankService from "./BloodBankService";
+import messages from "../../languages/en.json";
+
+vi.mock("./BloodBankService", () => ({
+  default: { issueCheck: vi.fn(), issue: vi.fn() },
+}));
+
+const unit = {
+  id: 5,
+  donationNumber: "G123498654321",
+  productCode: "E0336V00",
+  productType: { name: "Platelets", componentClass: "PLATELETS" },
+  abo: "O",
+  rhd: "POS",
+};
+
+const pass = (code) => ({
+  code,
+  status: "PASS",
+  messageKey: "bloodbank.check.patient.ok",
+  args: [],
+});
+const checksWith = (special) => [
+  pass("UNIT_STATUS"),
+  pass("EXPIRY"),
+  pass("PATIENT_MATCH"),
+  pass("GROUP_CONFIRMED"),
+  pass("ABO"),
+  special,
+  pass("CROSSMATCH"),
+  {
+    code: "SECOND_PERSON",
+    status: "PENDING",
+    messageKey: "bloodbank.check.secondPerson.required",
+    args: [],
+  },
+];
+
+const renderModal = (onIssued = vi.fn()) =>
+  render(
+    <IntlProvider locale="en" messages={messages}>
+      <IssueModal open unit={unit} onClose={vi.fn()} onIssued={onIssued} />
+    </IntlProvider>,
+  );
+
+const type = (label, value) =>
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+
+const scanAndCheck = async () => {
+  type(messages["bloodbank.issueModal.scanUnit"], "=G123498654321 00");
+  type(messages["bloodbank.issueModal.scanPatient"], "26-000123");
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: messages["bloodbank.issueModal.runCheck"],
+    }),
+  );
+  await screen.findByTestId("bb-checklist");
+};
+
+const issueButton = () =>
+  screen.getByRole("button", { name: messages["bloodbank.issueModal.submit"] });
+
+const fillCollectionAndSecondCheck = () => {
+  type(messages["bloodbank.field.location"], "Ward 3");
+  type(messages["bloodbank.field.collector"], "Porter Example");
+  type(messages["bloodbank.issueModal.secondLogin"], "checker");
+  type(messages["bloodbank.issueModal.secondPassword"], "secret");
+};
+
+beforeEach(() => vi.clearAllMocks());
+
+describe("IssueModal", () => {
+  it("compares donation numbers without the leading = and the flags", () => {
+    expect(dinKey("=G123498654321 00")).toBe("G123498654321");
+    expect(dinKey("g123498654321")).toBe("G123498654321");
+  });
+
+  it("blocks the issue when a check fails, and shows which one", async () => {
+    BloodBankService.issueCheck.mockResolvedValue({
+      unitId: 5,
+      allowed: false,
+      warningReasonRequired: false,
+      checks: checksWith({
+        code: "RHD",
+        status: "FAIL",
+        messageKey: "bloodbank.check.rhd.positiveForNegative",
+        args: ["POS", "NEG"],
+      }),
+    });
+    renderModal();
+
+    await scanAndCheck();
+
+    expect(BloodBankService.issueCheck).toHaveBeenCalledWith(5, "26-000123");
+    expect(
+      screen.getByText(messages["bloodbank.checks.blocked.title"]),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(messages["bloodbank.check.rhd.positiveForNegative"]),
+    ).toBeInTheDocument();
+    expect(issueButton()).toBeDisabled();
+    // the collection and second-check fields are not offered at all
+    expect(
+      screen.queryByLabelText(messages["bloodbank.issueModal.secondPassword"]),
+    ).toBeNull();
+  });
+
+  it("needs a reason on the warn path before it can issue, and sends it", async () => {
+    BloodBankService.issueCheck.mockResolvedValue({
+      unitId: 5,
+      allowed: true,
+      warningReasonRequired: true,
+      checks: checksWith({
+        code: "RHD",
+        status: "WARN",
+        messageKey: "bloodbank.check.rhd.positivePlateletsForNegative",
+        args: ["POS", "NEG"],
+      }),
+    });
+    BloodBankService.issue.mockResolvedValue({
+      unit: { ...unit, status: "ISSUED" },
+      events: [],
+    });
+    const onIssued = vi.fn();
+    renderModal(onIssued);
+
+    await scanAndCheck();
+    fillCollectionAndSecondCheck();
+    expect(issueButton()).toBeDisabled();
+
+    type(
+      messages["bloodbank.issueModal.warningReason"],
+      "No RhD-negative platelets in stock",
+    );
+    expect(issueButton()).toBeEnabled();
+    fireEvent.click(issueButton());
+
+    await waitFor(() => expect(onIssued).toHaveBeenCalled());
+    expect(BloodBankService.issue).toHaveBeenCalledWith(5, {
+      unitScan: "=G123498654321 00",
+      patientIdentifier: "26-000123",
+      location: "Ward 3",
+      collectorName: "Porter Example",
+      secondCheckerLogin: "checker",
+      secondCheckerPassword: "secret",
+      secondCheckerOtp: "",
+      warningReason: "No RhD-negative platelets in stock",
+    });
+  });
+
+  it("shows a refused second check and clears the password", async () => {
+    BloodBankService.issueCheck.mockResolvedValue({
+      unitId: 5,
+      allowed: true,
+      warningReasonRequired: false,
+      checks: checksWith(pass("RHD")),
+    });
+    const refused = new Error("refused");
+    refused.errorCode = "bloodbank.issue.error.checksFailed";
+    refused.params = [];
+    refused.checks = checksWith(pass("RHD")).map((c) =>
+      c.code === "SECOND_PERSON"
+        ? {
+            ...c,
+            status: "FAIL",
+            messageKey: "bloodbank.check.secondPerson.sameUser",
+          }
+        : c,
+    );
+    BloodBankService.issue.mockRejectedValue(refused);
+    renderModal();
+
+    await scanAndCheck();
+    fillCollectionAndSecondCheck();
+    fireEvent.click(issueButton());
+
+    expect(
+      await screen.findByText(
+        messages["bloodbank.check.secondPerson.sameUser"],
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(messages["bloodbank.issue.error.checksFailed"]),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(messages["bloodbank.issueModal.secondPassword"]),
+    ).toHaveValue("");
+    expect(issueButton()).toBeDisabled();
+  });
+});

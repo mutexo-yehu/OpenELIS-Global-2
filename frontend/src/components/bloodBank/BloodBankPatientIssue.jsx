@@ -1,0 +1,376 @@
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  Button,
+  InlineNotification,
+  Select,
+  SelectItem,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableHeader,
+  TableRow,
+  Tag,
+  Tile,
+} from "@carbon/react";
+import { useIntl } from "react-intl";
+import { useHistory } from "react-router-dom";
+import SearchPatientForm from "../patient/SearchPatientForm";
+import BloodBankService from "./BloodBankService";
+import IssueModal from "./IssueModal";
+import ReasonModal from "./ReasonModal";
+import ReserveModal from "./ReserveModal";
+import { ExpiryTag } from "./BloodBankStock";
+import {
+  errorText,
+  formatInstant,
+  groupText,
+  messageFor,
+  productText,
+} from "./bloodBankFormat";
+import "./BloodBank.css";
+
+const ResultLine = ({ label, result }) => {
+  const intl = useIntl();
+  return (
+    <div className="bb-tile-line">
+      <span>{label}</span>
+      <span>
+        {result
+          ? `${result.value} (${result.accessionNumber}, ${formatInstant(intl, result.collectedAt)})`
+          : intl.formatMessage({ id: "bloodbank.profile.none" })}
+      </span>
+    </div>
+  );
+};
+
+export const ProfilePanel = ({ profile }) => {
+  const intl = useIntl();
+  const t = (id, values) => intl.formatMessage({ id }, values);
+  if (!profile) return null;
+  const { group } = profile;
+  let groupTag;
+  if (group.discrepancy) {
+    groupTag = <Tag type="red">{t("bloodbank.profile.discrepancy")}</Tag>;
+  } else if (group.confirmed) {
+    groupTag = <Tag type="green">{t("bloodbank.profile.confirmed")}</Tag>;
+  } else {
+    groupTag = <Tag type="warm-gray">{t("bloodbank.profile.unconfirmed")}</Tag>;
+  }
+  return (
+    <Tile className="bb-section" data-testid="bb-profile">
+      <h4>{t("bloodbank.profile.title")}</h4>
+      {profile.notConfigured && profile.notConfigured.length > 0 && (
+        <InlineNotification
+          kind="warning"
+          lowContrast
+          hideCloseButton
+          title=""
+          subtitle={t("bloodbank.profile.notConfigured", {
+            list: profile.notConfigured.map((k) => t(k)).join(", "),
+          })}
+        />
+      )}
+      <div className="bb-tile-line">
+        <span>{t("bloodbank.field.group")}</span>
+        <span>
+          <strong>{groupText(intl, group.abo, group.rhd)}</strong> {groupTag}{" "}
+          {t("bloodbank.profile.samples", {
+            abo: group.aboSampleCount,
+            rhd: group.rhdSampleCount,
+          })}
+        </span>
+      </div>
+      <ResultLine
+        label={t("bloodbank.profile.antibodyScreen")}
+        result={profile.antibodyScreen}
+      />
+      <ResultLine label={t("bloodbank.profile.dat")} result={profile.dat} />
+      <h5 className="bb-section">{t("bloodbank.profile.crossmatches")}</h5>
+      {(profile.crossmatches || []).length === 0 ? (
+        <p>{t("bloodbank.profile.none")}</p>
+      ) : (
+        <ul>
+          {profile.crossmatches.map((x) => (
+            <li key={x.resultId}>
+              {x.accessionNumber}: {x.value}{" "}
+              <Tag type={x.compatible ? "green" : "red"} size="sm">
+                {t(
+                  x.compatible
+                    ? "bloodbank.profile.compatible"
+                    : "bloodbank.profile.incompatible",
+                )}
+              </Tag>{" "}
+              {x.validUntil &&
+                t("bloodbank.profile.validUntil", {
+                  when: formatInstant(intl, x.validUntil),
+                })}{" "}
+              {x.linkedDonationNumber
+                ? t("bloodbank.profile.linkedTo", {
+                    din: x.linkedDonationNumber,
+                  })
+                : t("bloodbank.profile.free")}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Tile>
+  );
+};
+
+const UnitTable = ({ units, renderActions, renderNotes, emptyKey }) => {
+  const intl = useIntl();
+  const t = (id) => intl.formatMessage({ id });
+  return (
+    <TableContainer>
+      <Table size="md">
+        <TableHead>
+          <TableRow>
+            <TableHeader>{t("bloodbank.field.din")}</TableHeader>
+            <TableHeader>{t("bloodbank.field.product")}</TableHeader>
+            <TableHeader>{t("bloodbank.field.group")}</TableHeader>
+            <TableHeader>{t("bloodbank.field.expiresAt")}</TableHeader>
+            {renderNotes && (
+              <TableHeader>{t("bloodbank.candidates.checks")}</TableHeader>
+            )}
+            <TableHeader />
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {units.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={6}>{t(emptyKey)}</TableCell>
+            </TableRow>
+          )}
+          {units.map((entry) => {
+            const unit = entry.unit || entry;
+            return (
+              <TableRow
+                key={unit.id}
+                className={entry.selectable === false ? "bb-disabled" : ""}
+              >
+                <TableCell>{unit.donationNumber}</TableCell>
+                <TableCell>{productText(unit)}</TableCell>
+                <TableCell>{groupText(intl, unit.abo, unit.rhd)}</TableCell>
+                <TableCell>
+                  {formatInstant(intl, unit.expiresAt)}{" "}
+                  <ExpiryTag unit={unit} />
+                </TableCell>
+                {renderNotes && <TableCell>{renderNotes(entry)}</TableCell>}
+                <TableCell>{renderActions(entry)}</TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+};
+
+/**
+ * Patient and issue: find the patient, see the blood group profile from
+ * validated results, reserve a suitable unit against a crossmatch, then issue a
+ * reserved unit with the bedside checks and the second-person check.
+ */
+const BloodBankPatientIssue = () => {
+  const intl = useIntl();
+  const history = useHistory();
+  const t = (id, values) => intl.formatMessage({ id }, values);
+  const [patient, setPatient] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [types, setTypes] = useState([]);
+  const [productType, setProductType] = useState("");
+  const [candidates, setCandidates] = useState([]);
+  const [reserved, setReserved] = useState([]);
+  const [notice, setNotice] = useState(null);
+  const [reserveUnit, setReserveUnit] = useState(null);
+  const [issueUnit, setIssueUnit] = useState(null);
+  const [releaseUnit, setReleaseUnit] = useState(null);
+
+  const patientId = patient?.patientPK;
+
+  useEffect(() => {
+    BloodBankService.productTypes()
+      .then(setTypes)
+      .catch(() => setTypes([]));
+  }, []);
+
+  const load = useCallback(() => {
+    if (!patientId) return;
+    Promise.all([
+      BloodBankService.profile(patientId),
+      BloodBankService.candidates(patientId, productType),
+      BloodBankService.listUnits({ patientId, status: ["RESERVED"] }),
+    ])
+      .then(([p, c, r]) => {
+        setProfile(p);
+        setCandidates(c || []);
+        setReserved(r || []);
+      })
+      .catch((e) => setNotice({ kind: "error", text: errorText(intl, e) }));
+  }, [patientId, productType, intl]);
+
+  useEffect(load, [load]);
+
+  const done = (key, unit) => {
+    setNotice({ kind: "success", text: t(key, { din: unit.donationNumber }) });
+    load();
+  };
+
+  const release = (text) =>
+    BloodBankService.unitDetail(releaseUnit.id)
+      .then((detail) =>
+        BloodBankService.releaseReservation(detail.activeReservation.id, text),
+      )
+      .then(() => done("bloodbank.unreserve.done", releaseUnit));
+
+  if (!patient) {
+    return (
+      <div>
+        <p className="bb-helper">{t("bloodbank.issue.findPatient")}</p>
+        <SearchPatientForm getSelectedPatient={(p) => setPatient(p)} />
+      </div>
+    );
+  }
+
+  const name = [patient.lastName, patient.firstName].filter(Boolean).join(", ");
+
+  return (
+    <div>
+      <div className="bb-row">
+        <h3>{name}</h3>
+        <Button
+          kind="ghost"
+          size="sm"
+          onClick={() => {
+            setPatient(null);
+            setProfile(null);
+            setCandidates([]);
+            setReserved([]);
+            setNotice(null);
+          }}
+        >
+          {t("bloodbank.issue.changePatient")}
+        </Button>
+        <Button
+          kind="ghost"
+          size="sm"
+          onClick={() => history.push(`/bloodbank/trace?patient=${patientId}`)}
+        >
+          {t("bloodbank.action.patientTrail")}
+        </Button>
+      </div>
+      {notice && (
+        <InlineNotification
+          kind={notice.kind}
+          lowContrast
+          title=""
+          subtitle={notice.text}
+          onClose={() => setNotice(null)}
+        />
+      )}
+      <ProfilePanel profile={profile} />
+
+      <div className="bb-section">
+        <h4>{t("bloodbank.reserved.title")}</h4>
+        <UnitTable
+          units={reserved}
+          emptyKey="bloodbank.reserved.empty"
+          renderActions={(unit) => (
+            <>
+              <Button
+                kind="primary"
+                size="sm"
+                onClick={() => setIssueUnit(unit)}
+              >
+                {t("bloodbank.action.issue")}
+              </Button>{" "}
+              <Button
+                kind="ghost"
+                size="sm"
+                onClick={() => setReleaseUnit(unit)}
+              >
+                {t("bloodbank.action.unreserve")}
+              </Button>
+            </>
+          )}
+        />
+      </div>
+
+      <div className="bb-section">
+        <h4>{t("bloodbank.candidates.title")}</h4>
+        <div className="bb-row">
+          <Select
+            id="bb-candidates-type"
+            labelText={t("bloodbank.field.productType")}
+            value={productType}
+            onChange={(e) => setProductType(e.target.value)}
+          >
+            <SelectItem value="" text={t("bloodbank.filter.all")} />
+            {types.map((ty) => (
+              <SelectItem key={ty.id} value={String(ty.id)} text={ty.name} />
+            ))}
+          </Select>
+        </div>
+        <UnitTable
+          units={candidates}
+          emptyKey="bloodbank.candidates.empty"
+          renderNotes={(entry) =>
+            (entry.checks || [])
+              .filter((c) => c.status !== "PASS")
+              .map((c) => (
+                <Tag
+                  key={c.code}
+                  type={c.status === "FAIL" ? "red" : "warm-gray"}
+                  size="sm"
+                >
+                  {messageFor(intl, c.messageKey, c.args)}
+                </Tag>
+              ))
+          }
+          renderActions={(entry) => (
+            <Button
+              kind="secondary"
+              size="sm"
+              disabled={!entry.selectable}
+              onClick={() => setReserveUnit(entry.unit)}
+            >
+              {t("bloodbank.action.reserve")}
+            </Button>
+          )}
+        />
+      </div>
+
+      <ReserveModal
+        open={!!reserveUnit}
+        unit={reserveUnit}
+        patientId={patientId}
+        profile={profile}
+        onClose={() => setReserveUnit(null)}
+        onReserved={() => done("bloodbank.reserve.done", reserveUnit)}
+      />
+      <IssueModal
+        open={!!issueUnit}
+        unit={issueUnit}
+        onClose={() => setIssueUnit(null)}
+        onIssued={() => done("bloodbank.issueModal.done", issueUnit)}
+      />
+      <ReasonModal
+        open={!!releaseUnit}
+        title={
+          releaseUnit
+            ? t("bloodbank.unreserve.title", {
+                din: releaseUnit.donationNumber,
+              })
+            : ""
+        }
+        label={t("bloodbank.field.reason")}
+        onSubmit={release}
+        onClose={() => setReleaseUnit(null)}
+      />
+    </div>
+  );
+};
+
+export default BloodBankPatientIssue;
