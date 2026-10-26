@@ -6,47 +6,49 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyZeroInteractions;
 import static org.mockito.Mockito.when;
 
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import org.junit.Assume;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.openelisglobal.bloodbank.safety.IssueSafetyChecker.SecondCheckOutcome;
 import org.openelisglobal.bloodbank.service.SecondPersonVerifier.Verification;
 import org.openelisglobal.esig.service.CredentialVerificationService;
+import org.openelisglobal.esig.service.OneTimeCodeCredentialVerifier;
 import org.openelisglobal.esig.valueholder.AuthMethod;
 import org.openelisglobal.systemuser.service.SystemUserService;
 import org.openelisglobal.systemuser.valueholder.SystemUser;
+import org.springframework.beans.factory.ObjectProvider;
 
 /**
- * Runs against either form of the e-signature credential check: the
- * two-argument one, or the three-argument one (with the authenticator code)
- * when the build includes Keycloak support for signatures.
+ * Both forms of the credential check: password only (no
+ * {@link OneTimeCodeCredentialVerifier} in the build) and password plus
+ * authenticator code (one is present).
  */
 @RunWith(MockitoJUnitRunner.class)
 public class SecondPersonVerifierImplTest {
 
     private static final String ISSUER = "10";
-    private static final Method WITH_OTP = otpOverload();
 
     @Mock
     private CredentialVerificationService credentials;
     @Mock
+    private OneTimeCodeCredentialVerifier codes;
+    @Mock
     private SystemUserService systemUserService;
+    @Mock
+    private ObjectProvider<OneTimeCodeCredentialVerifier> codesProvider;
 
-    @InjectMocks
-    private SecondPersonVerifierImpl verifier;
+    /** a build without a code check */
+    private SecondPersonVerifierImpl passwordOnly;
+    /** a build with one */
+    private SecondPersonVerifierImpl withCodes;
 
-    private static Method otpOverload() {
-        try {
-            return CredentialVerificationService.class.getMethod("verifyCredentialsByLoginName", String.class,
-                    String.class, String.class);
-        } catch (NoSuchMethodException e) {
-            return null;
-        }
+    @Before
+    public void setUp() {
+        passwordOnly = new SecondPersonVerifierImpl(credentials, (OneTimeCodeCredentialVerifier) null,
+                systemUserService);
+        withCodes = new SecondPersonVerifierImpl(credentials, codes, systemUserService);
     }
 
     private static SystemUser user(String id, String login, String active) {
@@ -57,50 +59,83 @@ public class SecondPersonVerifierImplTest {
         return user;
     }
 
-    /**
-     * The credential check, as the verifier will call it, on this mock (stubbing or
-     * verifying).
-     */
-    private static Object ask(CredentialVerificationService target, String login, String password, String otp)
-            throws Exception {
-        if (WITH_OTP == null) {
-            return target.verifyCredentialsByLoginName(login, password);
-        }
-        try {
-            return WITH_OTP.invoke(target, login, password, otp);
-        } catch (InvocationTargetException e) {
-            throw (Exception) e.getCause();
-        }
+    private void checkerIs(SystemUser user) {
+        when(systemUserService.getDataForLoginUser("checker")).thenReturn(user);
     }
 
     @Test
-    public void aDifferentActiveUserWithTheRightPasswordIsVerified() throws Exception {
-        when(systemUserService.getDataForLoginUser("checker")).thenReturn(user("11", "checker", "Y"));
-        when(ask(credentials, "checker", "pw", null)).thenReturn(AuthMethod.LOCAL);
+    public void aDifferentActiveUserWithTheRightPasswordIsVerified() {
+        checkerIs(user("11", "checker", "Y"));
+        when(credentials.verifyCredentialsByLoginName("checker", "pw")).thenReturn(AuthMethod.LOCAL);
 
-        Verification result = verifier.verify(ISSUER, " checker ", "pw", null);
+        Verification result = passwordOnly.verify(ISSUER, " checker ", "pw", null);
 
         assertEquals(SecondCheckOutcome.VERIFIED, result.outcome());
         assertEquals(Integer.valueOf(11), result.verifiedUserId());
-        ask(verify(credentials), "checker", "pw", null);
+        verify(credentials).verifyCredentialsByLoginName("checker", "pw");
     }
 
     @Test
-    public void theAuthenticatorCodeIsPassedOnWhenTheSignatureModuleChecksIt() throws Exception {
-        Assume.assumeTrue("only with Keycloak support for signatures", WITH_OTP != null);
-        when(systemUserService.getDataForLoginUser("checker")).thenReturn(user("11", "checker", "Y"));
-        when(ask(credentials, "checker", "pw", "123456")).thenReturn(AuthMethod.KEYCLOAK);
+    public void theAuthenticatorCodeIsCheckedWhenTheBuildCanCheckIt() {
+        checkerIs(user("11", "checker", "Y"));
+        when(codes.verifyCredentialsByLoginName("checker", "pw", "123456")).thenReturn(AuthMethod.KEYCLOAK);
 
-        assertEquals(SecondCheckOutcome.VERIFIED, verifier.verify(ISSUER, "checker", "pw", "123456").outcome());
-        ask(verify(credentials), "checker", "pw", "123456");
+        assertEquals(SecondCheckOutcome.VERIFIED, withCodes.verify(ISSUER, "checker", "pw", "123456").outcome());
+        verify(codes).verifyCredentialsByLoginName("checker", "pw", "123456");
+        // the password-only form is not asked as well (or instead)
+        verifyZeroInteractions(credentials);
+    }
+
+    @Test
+    public void aWrongCodeIsInvalid() {
+        checkerIs(user("11", "checker", "Y"));
+        when(codes.verifyCredentialsByLoginName("checker", "pw", "000000"))
+                .thenThrow(new IllegalArgumentException("Invalid credentials"));
+
+        Verification result = withCodes.verify(ISSUER, "checker", "pw", "000000");
+
+        assertEquals(SecondCheckOutcome.INVALID_CREDENTIALS, result.outcome());
+        assertNull(result.verifiedUserId());
+    }
+
+    @Test
+    public void aCodeCheckThatCannotBeMadeFailsClosed() {
+        checkerIs(user("11", "checker", "Y"));
+        when(codes.verifyCredentialsByLoginName("checker", "pw", "123456"))
+                .thenThrow(new IllegalStateException("identity provider unreachable"));
+
+        assertEquals(SecondCheckOutcome.UNAVAILABLE, withCodes.verify(ISSUER, "checker", "pw", "123456").outcome());
+    }
+
+    @Test
+    public void theSpringConstructorUsesTheCodeCheckWhenTheBuildHasOne() {
+        when(codesProvider.getIfAvailable()).thenReturn(codes);
+        SecondPersonVerifierImpl wired = new SecondPersonVerifierImpl(credentials, codesProvider, systemUserService);
+        checkerIs(user("11", "checker", "Y"));
+        when(codes.verifyCredentialsByLoginName("checker", "pw", "123456")).thenReturn(AuthMethod.KEYCLOAK);
+
+        assertEquals(SecondCheckOutcome.VERIFIED, wired.verify(ISSUER, "checker", "pw", "123456").outcome());
+        verifyZeroInteractions(credentials);
+    }
+
+    @Test
+    public void theSpringConstructorFallsBackToThePasswordCheckWithoutOne() {
+        when(codesProvider.getIfAvailable()).thenReturn(null);
+        SecondPersonVerifierImpl wired = new SecondPersonVerifierImpl(credentials, codesProvider, systemUserService);
+        checkerIs(user("11", "checker", "Y"));
+        when(credentials.verifyCredentialsByLoginName("checker", "pw"))
+                .thenThrow(new UnsupportedOperationException("Keycloak verification not implemented"));
+
+        // a Keycloak site on a build without the code check: refused, not waved through
+        assertEquals(SecondCheckOutcome.UNAVAILABLE, wired.verify(ISSUER, "checker", "pw", "123456").outcome());
     }
 
     @Test
     public void theIssuerCannotBeTheirOwnSecondPerson() {
         when(systemUserService.getDataForLoginUser("me")).thenReturn(user(ISSUER, "me", "Y"));
 
-        assertEquals(SecondCheckOutcome.SAME_USER, verifier.verify(ISSUER, "me", "pw", null).outcome());
-        verifyZeroInteractions(credentials);
+        assertEquals(SecondCheckOutcome.SAME_USER, withCodes.verify(ISSUER, "me", "pw", null).outcome());
+        verifyZeroInteractions(credentials, codes);
     }
 
     @Test
@@ -108,46 +143,48 @@ public class SecondPersonVerifierImplTest {
         when(systemUserService.getDataForLoginUser("gone")).thenReturn(user("12", "gone", "N"));
         when(systemUserService.getDataForLoginUser("nobody")).thenReturn(null);
 
-        assertEquals(SecondCheckOutcome.INACTIVE_USER, verifier.verify(ISSUER, "gone", "pw", null).outcome());
-        assertEquals(SecondCheckOutcome.UNKNOWN_USER, verifier.verify(ISSUER, "nobody", "pw", null).outcome());
-        verifyZeroInteractions(credentials);
+        assertEquals(SecondCheckOutcome.INACTIVE_USER, withCodes.verify(ISSUER, "gone", "pw", null).outcome());
+        assertEquals(SecondCheckOutcome.UNKNOWN_USER, passwordOnly.verify(ISSUER, "nobody", "pw", null).outcome());
+        verifyZeroInteractions(credentials, codes);
     }
 
     @Test
-    public void aWrongPasswordIsInvalid() throws Exception {
-        when(systemUserService.getDataForLoginUser("checker")).thenReturn(user("11", "checker", "Y"));
-        when(ask(credentials, "checker", "wrong", null)).thenThrow(new IllegalArgumentException("Invalid credentials"));
+    public void aWrongPasswordIsInvalid() {
+        checkerIs(user("11", "checker", "Y"));
+        when(credentials.verifyCredentialsByLoginName("checker", "wrong"))
+                .thenThrow(new IllegalArgumentException("Invalid credentials"));
 
-        Verification result = verifier.verify(ISSUER, "checker", "wrong", null);
+        Verification result = passwordOnly.verify(ISSUER, "checker", "wrong", null);
 
         assertEquals(SecondCheckOutcome.INVALID_CREDENTIALS, result.outcome());
         assertNull(result.verifiedUserId());
     }
 
     @Test
-    public void verificationThatCannotBeMadeFailsClosed() throws Exception {
-        when(systemUserService.getDataForLoginUser("checker")).thenReturn(user("11", "checker", "Y"));
-        when(ask(credentials, "checker", "pw", null))
+    public void verificationThatCannotBeMadeFailsClosed() {
+        checkerIs(user("11", "checker", "Y"));
+        when(credentials.verifyCredentialsByLoginName("checker", "pw"))
                 .thenThrow(new UnsupportedOperationException("Keycloak verification not implemented"));
-        assertEquals(SecondCheckOutcome.UNAVAILABLE, verifier.verify(ISSUER, "checker", "pw", null).outcome());
+        assertEquals(SecondCheckOutcome.UNAVAILABLE, passwordOnly.verify(ISSUER, "checker", "pw", null).outcome());
 
-        when(ask(credentials, "checker", "pw2", null)).thenThrow(new IllegalStateException("Authentication error"));
-        assertEquals(SecondCheckOutcome.UNAVAILABLE, verifier.verify(ISSUER, "checker", "pw2", null).outcome());
+        when(credentials.verifyCredentialsByLoginName("checker", "pw2"))
+                .thenThrow(new IllegalStateException("Authentication error"));
+        assertEquals(SecondCheckOutcome.UNAVAILABLE, passwordOnly.verify(ISSUER, "checker", "pw2", null).outcome());
     }
 
     @Test
     public void aUserLookupFailureFailsClosed() {
         when(systemUserService.getDataForLoginUser("checker")).thenThrow(new IllegalStateException("db down"));
 
-        assertEquals(SecondCheckOutcome.UNAVAILABLE, verifier.verify(ISSUER, "checker", "pw", null).outcome());
-        verifyZeroInteractions(credentials);
+        assertEquals(SecondCheckOutcome.UNAVAILABLE, withCodes.verify(ISSUER, "checker", "pw", null).outcome());
+        verifyZeroInteractions(credentials, codes);
     }
 
     @Test
     public void nothingEnteredIsNotProvided() {
-        assertEquals(SecondCheckOutcome.NOT_PROVIDED, verifier.verify(ISSUER, "", "pw", null).outcome());
-        assertEquals(SecondCheckOutcome.NOT_PROVIDED, verifier.verify(ISSUER, "checker", "", null).outcome());
-        assertEquals(SecondCheckOutcome.NOT_PROVIDED, verifier.verify(ISSUER, null, null, null).outcome());
-        verifyZeroInteractions(systemUserService, credentials);
+        assertEquals(SecondCheckOutcome.NOT_PROVIDED, withCodes.verify(ISSUER, "", "pw", null).outcome());
+        assertEquals(SecondCheckOutcome.NOT_PROVIDED, withCodes.verify(ISSUER, "checker", "", null).outcome());
+        assertEquals(SecondCheckOutcome.NOT_PROVIDED, withCodes.verify(ISSUER, null, null, null).outcome());
+        verifyZeroInteractions(systemUserService, credentials, codes);
     }
 }

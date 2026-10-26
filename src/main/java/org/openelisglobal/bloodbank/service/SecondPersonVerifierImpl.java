@@ -1,20 +1,23 @@
 package org.openelisglobal.bloodbank.service;
 
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import org.openelisglobal.bloodbank.safety.IssueSafetyChecker.SecondCheckOutcome;
 import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.esig.service.CredentialVerificationService;
+import org.openelisglobal.esig.service.OneTimeCodeCredentialVerifier;
 import org.openelisglobal.systemuser.service.SystemUserService;
 import org.openelisglobal.systemuser.valueholder.SystemUser;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Uses the e-signature module's {@link CredentialVerificationService}, so the
- * second check accepts exactly what an electronic signature accepts.
+ * Uses the e-signature module's credential check, so the second check accepts
+ * exactly what an electronic signature accepts: with the authenticator code
+ * when the build has a {@link OneTimeCodeCredentialVerifier}, else the
+ * password-only {@link CredentialVerificationService} (which refuses, and so
+ * fails closed, where it cannot check a site's accounts).
  *
  * <p>
  * Runs outside the caller's transaction: a refused credential must not mark the
@@ -24,19 +27,25 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SecondPersonVerifierImpl implements SecondPersonVerifier {
 
-    /**
-     * {@code verifyCredentialsByLoginName(login, password, otp)}, when the
-     * e-signature module has Keycloak support (it then checks the authenticator
-     * code); null on builds where only the two-argument form exists, which checks
-     * local passwords and has no code to check.
-     */
-    private static final Method WITH_OTP = findOtpOverload();
+    private final CredentialVerificationService credentialVerificationService;
+    /** null when the build cannot check authenticator codes */
+    private final OneTimeCodeCredentialVerifier oneTimeCodeVerifier;
+    private final SystemUserService systemUserService;
 
     @Autowired
-    private CredentialVerificationService credentialVerificationService;
+    public SecondPersonVerifierImpl(CredentialVerificationService credentialVerificationService,
+            ObjectProvider<OneTimeCodeCredentialVerifier> oneTimeCodeVerifier, SystemUserService systemUserService) {
+        // getIfAvailable: none gives null; more than one fails at startup, never a
+        // guess
+        this(credentialVerificationService, oneTimeCodeVerifier.getIfAvailable(), systemUserService);
+    }
 
-    @Autowired
-    private SystemUserService systemUserService;
+    SecondPersonVerifierImpl(CredentialVerificationService credentialVerificationService,
+            OneTimeCodeCredentialVerifier oneTimeCodeVerifier, SystemUserService systemUserService) {
+        this.credentialVerificationService = credentialVerificationService;
+        this.oneTimeCodeVerifier = oneTimeCodeVerifier;
+        this.systemUserService = systemUserService;
+    }
 
     @Override
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -61,7 +70,11 @@ public class SecondPersonVerifierImpl implements SecondPersonVerifier {
             return new Verification(SecondCheckOutcome.INACTIVE_USER, null);
         }
         try {
-            check(user.getLoginName(), password, otp);
+            if (oneTimeCodeVerifier != null) {
+                oneTimeCodeVerifier.verifyCredentialsByLoginName(user.getLoginName(), password, otp);
+            } else {
+                credentialVerificationService.verifyCredentialsByLoginName(user.getLoginName(), password);
+            }
         } catch (IllegalArgumentException e) {
             return new Verification(SecondCheckOutcome.INVALID_CREDENTIALS, null);
         } catch (RuntimeException e) {
@@ -71,32 +84,5 @@ public class SecondPersonVerifierImpl implements SecondPersonVerifier {
             return new Verification(SecondCheckOutcome.UNAVAILABLE, null);
         }
         return new Verification(SecondCheckOutcome.VERIFIED, Integer.valueOf(user.getId()));
-    }
-
-    private void check(String login, String password, String otp) {
-        if (WITH_OTP == null) {
-            credentialVerificationService.verifyCredentialsByLoginName(login, password);
-            return;
-        }
-        try {
-            WITH_OTP.invoke(credentialVerificationService, login, password, otp);
-        } catch (InvocationTargetException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof RuntimeException runtime) {
-                throw runtime;
-            }
-            throw new IllegalStateException("credential verification failed", cause);
-        } catch (IllegalAccessException e) {
-            throw new IllegalStateException("credential verification not callable", e);
-        }
-    }
-
-    private static Method findOtpOverload() {
-        try {
-            return CredentialVerificationService.class.getMethod("verifyCredentialsByLoginName", String.class,
-                    String.class, String.class);
-        } catch (NoSuchMethodException e) {
-            return null;
-        }
     }
 }
