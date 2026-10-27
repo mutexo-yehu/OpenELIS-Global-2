@@ -30,6 +30,8 @@ import org.openelisglobal.reports.action.implementation.reportBeans.ReportCallba
 import org.openelisglobal.reports.action.implementation.reportBeans.ReportComponentLine;
 import org.openelisglobal.reports.action.implementation.reportBeans.ReportSampleLine;
 import org.openelisglobal.reports.form.ReportForm;
+import org.openelisglobal.result.valueholder.Result;
+import org.openelisglobal.resultlimits.valueholder.ResultLimit;
 import org.openelisglobal.testsupport.PdfImages;
 import org.openelisglobal.testsupport.PdfRegression;
 import org.openelisglobal.testsupport.PdfText;
@@ -271,6 +273,52 @@ public class PatientResultsPdfTest extends BaseWebContextSensitiveTest {
         List<String> lines = lines(PdfText.of(render(List.of(glucose), Map.of(ORDER, order()))));
 
         assertContains(lines, "Glucose (Serum) 1 6.3 3.9 - 5.8 mmol/L 01/10/26 10:15");
+    }
+
+    // Regression: the report row stored the localized letter (H) as its flag code,
+    // which the flag column does not know, so an out-of-range result printed bold
+    // with a bar but no flag, and a critical one was not marked critical.
+    @Test
+    public void anAboveRangeResultFromTheReportPrintsItsFlag() throws Exception {
+        ClinicalPatientData glucose = row(ORDER, "Chemistry", "Glucose", "6.3", null);
+        String printed = new PatientCILNSPClinical_vreduit().getResultFlag(numericResult("6.3", 3.9, 5.8), null,
+                glucose);
+
+        assertEquals(ResultAlertFlags.ABOVE, glucose.getFlagCode());
+        assertEquals(" <b>H</b>", printed);
+        String text = PdfText.of(render(List.of(glucose), Map.of(ORDER, order())));
+        assertTrue(text, text.contains("6.3 ↑ H"));
+    }
+
+    @Test
+    public void aCriticallyHighResultFromTheReportIsMarkedCritical() throws Exception {
+        ResultLimit limit = new ResultLimit();
+        limit.setLowCritical(2.5);
+        limit.setHighCritical(6.5);
+        PatientReport report = new PatientCILNSPClinical_vreduit() {
+            @Override
+            protected String criticalAlertFlag(Result result) {
+                return ResultAlertFlags.criticalCode(limit, result.getValue(true));
+            }
+        };
+        ClinicalPatientData potassium = row(ORDER, "Chemistry", "Potassium", "6.8", null);
+        String printed = report.getResultFlag(numericResult("6.8", 3.5, 5.1), null, potassium);
+
+        assertEquals(ResultAlertFlags.CRITICALLY_ABOVE, potassium.getFlagCode());
+        assertTrue(PatientCILNSPClinical_vreduit.isCritical(potassium.getFlagCode()));
+        assertEquals(" <b>HH</b>", printed);
+        String text = PdfText.of(render(List.of(potassium), Map.of(ORDER, order())));
+        assertTrue(text, text.contains("6.8 ⇈ HH"));
+        assertTrue(text, text.contains("CRITICAL"));
+    }
+
+    private static Result numericResult(String value, double minNormal, double maxNormal) {
+        Result result = new Result();
+        result.setResultType("N");
+        result.setValue(value);
+        result.setMinNormal(minNormal);
+        result.setMaxNormal(maxNormal);
+        return result;
     }
 
     @Test

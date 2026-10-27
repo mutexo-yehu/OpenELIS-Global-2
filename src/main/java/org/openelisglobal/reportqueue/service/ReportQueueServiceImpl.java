@@ -464,9 +464,8 @@ public class ReportQueueServiceImpl implements ReportQueueService {
                                         result.getSampleTypeId())
                                 : resultLimitService.getResultLimitForComponentAndPatient(scope, patient,
                                         result.getSampleTypeId()));
-                String letter = ResultAlertFlags.criticalLetter(limit,
-                        StringUtil.getActualNumericValue(result.getValue()));
-                if (!GenericValidator.isBlankOrNull(letter)) {
+                String code = ResultAlertFlags.criticalCode(limit, StringUtil.getActualNumericValue(result.getValue()));
+                if (!GenericValidator.isBlankOrNull(code)) {
                     critical.add(result.getSampleId());
                 }
             } catch (RuntimeException e) {
@@ -856,8 +855,9 @@ public class ReportQueueServiceImpl implements ReportQueueService {
     }
 
     /**
-     * The same letters the report prints: B/E against the result's own range, BB/EE
-     * beyond the critical bound.
+     * The same codes the report stores: B/E against the result's own range, BB/EE
+     * beyond the critical bound, * for an abnormal select-list answer. The queue
+     * screen turns them into an arrow and the language's letter.
      */
     private String flag(Analysis analysis, Result result, Patient patient) {
         try {
@@ -874,7 +874,7 @@ public class ReportQueueServiceImpl implements ReportQueueService {
                     }
                 }
                 ResultLimit limit = resultLimitService.getResultLimitForResult(analysis, result, patient);
-                String critical = ResultAlertFlags.criticalLetter(limit, result.getValue(true));
+                String critical = ResultAlertFlags.criticalCode(limit, result.getValue(true));
                 return GenericValidator.isBlankOrNull(critical) ? flag : critical;
             }
             if (ResultType.isDictionaryVariant(result.getResultType())

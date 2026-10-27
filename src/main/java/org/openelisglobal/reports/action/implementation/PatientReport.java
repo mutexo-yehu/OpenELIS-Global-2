@@ -775,9 +775,9 @@ public abstract class PatientReport extends Report {
                 if (result.getMinNormal() != null & result.getMaxNormal() != null
                         && (result.getMinNormal() != 0.0 || result.getMaxNormal() != 0.0)) {
                     if (Double.valueOf(result.getValue(true)) < result.getMinNormal()) {
-                        flag = ResultAlertFlags.below();
+                        flag = ResultAlertFlags.BELOW;
                     } else if (Double.valueOf(result.getValue(true)) > result.getMaxNormal()) {
-                        flag = ResultAlertFlags.above();
+                        flag = ResultAlertFlags.ABOVE;
                     }
                 }
                 String critical = criticalAlertFlag(result);
@@ -803,10 +803,12 @@ public abstract class PatientReport extends Report {
                     data.setAbnormalResult(Boolean.TRUE);
                     data.setFlagCode(flag);
                 }
+                // the row keeps the code; only the printed text carries the letter
+                String letter = ResultAlertFlags.letterFor(flag);
                 if (!GenericValidator.isBlankOrNull(imbed)) {
-                    return " <b>" + flag + "," + imbed + "</b>";
+                    return " <b>" + letter + "," + imbed + "</b>";
                 } else {
-                    return " <b>" + flag + "</b>";
+                    return " <b>" + letter + "</b>";
                 }
             }
         } catch (NumberFormatException e) {
@@ -858,7 +860,7 @@ public abstract class PatientReport extends Report {
         try {
             ResultLimit limit = SpringContext.getBean(ResultLimitService.class).getResultLimitForResult(currentAnalysis,
                     result, currentPatient);
-            return ResultAlertFlags.criticalLetter(limit, result.getValue(true));
+            return ResultAlertFlags.criticalCode(limit, result.getValue(true));
         } catch (RuntimeException e) {
             LogEvent.logError("No critical alert flag for analysis " + currentAnalysis.getId() + ", result "
                     + result.getId() + ": the report prints the value without it", e);
@@ -1079,11 +1081,11 @@ public abstract class PatientReport extends Report {
             Result first = componentResults.get(0);
             ResultLimit limit = resultLimitService.getResultLimitForResult(currentAnalysis, first, currentPatient,
                     component.getId());
-            String letter = ResultAlertFlags.componentLetter(limit, first.getResultType(), first.getValue(true));
-            alerts.add(letter);
+            String code = ResultAlertFlags.componentCode(limit, first.getResultType(), first.getValue(true));
+            alerts.add(code);
             results.append(component.getLabel()).append(": ").append(componentValue);
-            if (!letter.isEmpty()) {
-                results.append(" <b>").append(letter).append("</b>");
+            if (!code.isEmpty()) {
+                results.append(" <b>").append(ResultAlertFlags.letterFor(code)).append("</b>");
             }
             results.append("\n");
 
@@ -1096,7 +1098,7 @@ public abstract class PatientReport extends Report {
                     : resultLimitService.getDisplayReferenceRange(limit,
                             GenericValidator.isBlankOrNull(significantDigits) ? "0" : significantDigits, " - ");
             ranges.append(range).append("\n");
-            lines.add(new ReportComponentLine(component.getLabel(), componentValue, letter, range, uom));
+            lines.add(new ReportComponentLine(component.getLabel(), componentValue, code, range, uom));
         }
         data.setComponents(lines);
         trimTrailingNewline(results);
@@ -1107,7 +1109,7 @@ public abstract class PatientReport extends Report {
         data.setUom(uoms.toString());
         data.setTestRefRange(ranges.toString());
         data.setHasRangeAndUOM(ranges.length() > 0 || uoms.length() > 0);
-        if (alerts.stream().anyMatch(letter -> !letter.isEmpty())) {
+        if (alerts.stream().anyMatch(code -> !code.isEmpty())) {
             data.setAbnormalResult(Boolean.TRUE);
             data.setAlerts(" <b>" + ResultAlertFlags.ABNORMAL + "</b>");
         }
