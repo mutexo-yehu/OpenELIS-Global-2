@@ -97,7 +97,11 @@ describe("IssueModal", () => {
 
     await scanAndCheck();
 
-    expect(BloodBankService.issueCheck).toHaveBeenCalledWith(5, "26-000123");
+    expect(BloodBankService.issueCheck).toHaveBeenCalledWith(
+      5,
+      "26-000123",
+      "=G123498654321 00",
+    );
     expect(
       screen.getByText(messages["bloodbank.checks.blocked.title"]),
     ).toBeInTheDocument();

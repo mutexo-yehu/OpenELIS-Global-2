@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import org.openelisglobal.bloodbank.isbt.Isbt128Parser;
 import org.openelisglobal.bloodbank.safety.PatientBloodProfile.CrossmatchResult;
 import org.openelisglobal.bloodbank.safety.SafetyCheck.CheckStatus;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.Abo;
@@ -25,6 +26,7 @@ import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.UnitStatus;
 public final class IssueSafetyChecker {
 
     public static final String UNIT_STATUS = "UNIT_STATUS";
+    public static final String UNIT_MATCH = "UNIT_MATCH";
     public static final String EXPIRY = "EXPIRY";
     public static final String PATIENT_MATCH = "PATIENT_MATCH";
     public static final String CROSSMATCH = "CROSSMATCH";
@@ -35,7 +37,7 @@ public final class IssueSafetyChecker {
 
     /** What the checks read. */
     public record UnitFacts(Long id, UnitStatus status, ComponentClass componentClass, boolean needsCrossmatch, Abo abo,
-            RhD rhd, Instant expiresAt, Long patientId) {
+            RhD rhd, Instant expiresAt, Long patientId, String donationNumber) {
     }
 
     /** The unit's live reservation; null when it has none. */
@@ -43,14 +45,18 @@ public final class IssueSafetyChecker {
     }
 
     /**
-     * @param scannedPatientId the patient the scanned lab number or patient
-     *                         identifier resolved to, or null if it resolved to
-     *                         nobody
-     * @param secondCheck      the outcome of the second person's re-authentication;
-     *                         NOT_PROVIDED in a dry run
+     * @param scannedPatientId      the patient the scanned lab number or patient
+     *                              identifier resolved to, or null if it resolved
+     *                              to nobody
+     * @param secondCheck           the outcome of the second person's
+     *                              re-authentication; NOT_PROVIDED in a dry run
+     * @param scannedDonationNumber the donation number scanned or typed from the
+     *                              bag in hand, as received (a DIN scan, the 13
+     *                              characters, or the 13 plus the check character)
      */
     public record IssueSnapshot(UnitFacts unit, ReservationFacts reservation, Long scannedPatientId,
-            PatientBloodProfile profile, BloodBankRules rules, SecondCheckOutcome secondCheck) {
+            PatientBloodProfile profile, BloodBankRules rules, SecondCheckOutcome secondCheck,
+            String scannedDonationNumber) {
     }
 
     /** How the second person's re-authentication ended. */
@@ -63,6 +69,7 @@ public final class IssueSafetyChecker {
         UnitFacts unit = snapshot.unit();
         List<SafetyCheck> checks = new ArrayList<>();
         checks.add(unitStatus(unit));
+        checks.add(unitMatch(unit, snapshot.scannedDonationNumber()));
         checks.add(expiry(unit, now));
         checks.add(patientMatch(unit, snapshot.reservation(), snapshot.scannedPatientId()));
         checks.addAll(BloodCompatibility.check(unit.componentClass(), unit.abo(), unit.rhd(),
@@ -87,6 +94,27 @@ public final class IssueSafetyChecker {
             return SafetyCheck.pass(UNIT_STATUS, "bloodbank.check.unitStatus.reserved");
         }
         return SafetyCheck.fail(UNIT_STATUS, "bloodbank.check.unitStatus.notReserved", String.valueOf(unit.status()));
+    }
+
+    /**
+     * The bag in hand must be the unit on screen: its scanned donation number must
+     * be this unit's. A missing or unreadable scan fails, as does a wrong check
+     * character.
+     */
+    static SafetyCheck unitMatch(UnitFacts unit, String scannedDonationNumber) {
+        if (scannedDonationNumber == null || scannedDonationNumber.isBlank()) {
+            return SafetyCheck.fail(UNIT_MATCH, "bloodbank.check.unitMatch.notScanned");
+        }
+        List<String> errors = new ArrayList<>();
+        String scanned = Isbt128Parser.typedDonationNumber(scannedDonationNumber, errors);
+        if (scanned == null || !errors.isEmpty()) {
+            return SafetyCheck.fail(UNIT_MATCH, "bloodbank.check.unitMatch.unreadable", scannedDonationNumber.trim());
+        }
+        if (!scanned.equals(unit.donationNumber())) {
+            return SafetyCheck.fail(UNIT_MATCH, "bloodbank.check.unitMatch.mismatch", scanned,
+                    String.valueOf(unit.donationNumber()));
+        }
+        return SafetyCheck.pass(UNIT_MATCH, "bloodbank.check.unitMatch.ok", scanned);
     }
 
     /**

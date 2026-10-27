@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.junit.Test;
+import org.openelisglobal.bloodbank.isbt.Isbt128Parser;
 import org.openelisglobal.bloodbank.safety.BloodBankRules.RuleAction;
 import org.openelisglobal.bloodbank.safety.IssueSafetyChecker.IssueSnapshot;
 import org.openelisglobal.bloodbank.safety.IssueSafetyChecker.ReservationFacts;
@@ -34,9 +35,10 @@ public class IssueSafetyCheckerTest {
     private static final long PATIENT = 501L;
     private static final long OTHER_PATIENT = 502L;
     private static final long CROSSMATCH = 9001L;
+    private static final String DIN = "G123498654321";
 
     private static UnitFacts redCells(UnitStatus status, Instant expiresAt, Long patientId) {
-        return new UnitFacts(1L, status, ComponentClass.RED_CELLS, true, Abo.O, RhD.NEG, expiresAt, patientId);
+        return new UnitFacts(1L, status, ComponentClass.RED_CELLS, true, Abo.O, RhD.NEG, expiresAt, patientId, DIN);
     }
 
     private static ReservationFacts reservation(Long patientId, Long crossmatchId) {
@@ -60,7 +62,7 @@ public class IssueSafetyCheckerTest {
     private static IssueSnapshot good() {
         return new IssueSnapshot(redCells(UnitStatus.RESERVED, NOW.plus(Duration.ofDays(10)), PATIENT),
                 reservation(PATIENT, CROSSMATCH), PATIENT, profile(crossmatch(true, NOW.plus(Duration.ofHours(5)))),
-                BloodBankRules.DEFAULTS, SecondCheckOutcome.VERIFIED);
+                BloodBankRules.DEFAULTS, SecondCheckOutcome.VERIFIED, DIN);
     }
 
     private static Map<String, SafetyCheck> byCode(List<SafetyCheck> checks) {
@@ -71,8 +73,8 @@ public class IssueSafetyCheckerTest {
     public void theGoodCasePassesEveryCheck() {
         List<SafetyCheck> checks = IssueSafetyChecker.check(good(), CLOCK);
 
-        assertEquals(List.of("UNIT_STATUS", "EXPIRY", "PATIENT_MATCH", "GROUP_CONFIRMED", "ABO", "RHD", "CROSSMATCH",
-                "SECOND_PERSON"), checks.stream().map(SafetyCheck::code).toList());
+        assertEquals(List.of("UNIT_STATUS", "UNIT_MATCH", "EXPIRY", "PATIENT_MATCH", "GROUP_CONFIRMED", "ABO", "RHD",
+                "CROSSMATCH", "SECOND_PERSON"), checks.stream().map(SafetyCheck::code).toList());
         assertTrue(checks.stream().allMatch(c -> c.status() == CheckStatus.PASS));
         assertTrue(IssueSafetyChecker.allowsIssue(checks));
         assertFalse(IssueSafetyChecker.needsWarningReason(checks));
@@ -83,7 +85,7 @@ public class IssueSafetyCheckerTest {
         for (UnitStatus status : UnitStatus.values()) {
             IssueSnapshot s = good();
             IssueSnapshot snapshot = new IssueSnapshot(redCells(status, s.unit().expiresAt(), PATIENT), s.reservation(),
-                    s.scannedPatientId(), s.profile(), s.rules(), s.secondCheck());
+                    s.scannedPatientId(), s.profile(), s.rules(), s.secondCheck(), DIN);
             SafetyCheck check = byCode(IssueSafetyChecker.check(snapshot, CLOCK)).get("UNIT_STATUS");
             assertEquals(status.name(), status == UnitStatus.RESERVED ? CheckStatus.PASS : CheckStatus.FAIL,
                     check.status());
@@ -101,41 +103,40 @@ public class IssueSafetyCheckerTest {
     private static SafetyCheck expiryAt(Instant expiresAt) {
         IssueSnapshot s = good();
         IssueSnapshot snapshot = new IssueSnapshot(redCells(UnitStatus.RESERVED, expiresAt, PATIENT), s.reservation(),
-                s.scannedPatientId(), s.profile(), s.rules(), s.secondCheck());
+                s.scannedPatientId(), s.profile(), s.rules(), s.secondCheck(), DIN);
         return byCode(IssueSafetyChecker.check(snapshot, CLOCK)).get("EXPIRY");
     }
 
     @Test
     public void theScannedPatientMustBeTheReservedPatient() {
         IssueSnapshot s = good();
-        SafetyCheck wrongPatient = byCode(IssueSafetyChecker.check(
-                new IssueSnapshot(s.unit(), s.reservation(), OTHER_PATIENT, s.profile(), s.rules(), s.secondCheck()),
-                CLOCK)).get("PATIENT_MATCH");
+        SafetyCheck wrongPatient = byCode(IssueSafetyChecker.check(new IssueSnapshot(s.unit(), s.reservation(),
+                OTHER_PATIENT, s.profile(), s.rules(), s.secondCheck(), DIN), CLOCK)).get("PATIENT_MATCH");
         assertEquals(CheckStatus.FAIL, wrongPatient.status());
         assertEquals("bloodbank.check.patient.mismatch", wrongPatient.messageKey());
 
         SafetyCheck nobody = byCode(IssueSafetyChecker.check(
-                new IssueSnapshot(s.unit(), s.reservation(), null, s.profile(), s.rules(), s.secondCheck()), CLOCK))
-                .get("PATIENT_MATCH");
+                new IssueSnapshot(s.unit(), s.reservation(), null, s.profile(), s.rules(), s.secondCheck(), DIN),
+                CLOCK)).get("PATIENT_MATCH");
         assertEquals("bloodbank.check.patient.notIdentified", nobody.messageKey());
 
         SafetyCheck noReservation = byCode(IssueSafetyChecker
-                .check(new IssueSnapshot(s.unit(), null, PATIENT, s.profile(), s.rules(), s.secondCheck()), CLOCK))
+                .check(new IssueSnapshot(s.unit(), null, PATIENT, s.profile(), s.rules(), s.secondCheck(), DIN), CLOCK))
                 .get("PATIENT_MATCH");
         assertEquals("bloodbank.check.patient.noReservation", noReservation.messageKey());
 
         // the unit itself names another patient than the reservation
         SafetyCheck unitDisagrees = byCode(IssueSafetyChecker
                 .check(new IssueSnapshot(redCells(UnitStatus.RESERVED, s.unit().expiresAt(), OTHER_PATIENT),
-                        s.reservation(), PATIENT, s.profile(), s.rules(), s.secondCheck()), CLOCK))
+                        s.reservation(), PATIENT, s.profile(), s.rules(), s.secondCheck(), DIN), CLOCK))
                 .get("PATIENT_MATCH");
         assertEquals(CheckStatus.FAIL, unitDisagrees.status());
 
         ReservationFacts released = new ReservationFacts(7L, PATIENT, ReservationStatus.RELEASED, CROSSMATCH);
         assertEquals(CheckStatus.FAIL,
                 byCode(IssueSafetyChecker.check(
-                        new IssueSnapshot(s.unit(), released, PATIENT, s.profile(), s.rules(), s.secondCheck()), CLOCK))
-                        .get("PATIENT_MATCH").status());
+                        new IssueSnapshot(s.unit(), released, PATIENT, s.profile(), s.rules(), s.secondCheck(), DIN),
+                        CLOCK)).get("PATIENT_MATCH").status());
     }
 
     @Test
@@ -154,12 +155,12 @@ public class IssueSafetyCheckerTest {
         // the reservation names a result that is not among the patient's validated
         // crossmatches
         SafetyCheck notValidated = byCode(IssueSafetyChecker.check(
-                new IssueSnapshot(s.unit(), s.reservation(), PATIENT, profile(), s.rules(), s.secondCheck()), CLOCK))
-                .get("CROSSMATCH");
+                new IssueSnapshot(s.unit(), s.reservation(), PATIENT, profile(), s.rules(), s.secondCheck(), DIN),
+                CLOCK)).get("CROSSMATCH");
         assertEquals("bloodbank.check.crossmatch.notValidated", notValidated.messageKey());
 
         SafetyCheck missing = byCode(IssueSafetyChecker.check(new IssueSnapshot(s.unit(), reservation(PATIENT, null),
-                PATIENT, s.profile(), s.rules(), s.secondCheck()), CLOCK)).get("CROSSMATCH");
+                PATIENT, s.profile(), s.rules(), s.secondCheck(), DIN), CLOCK)).get("CROSSMATCH");
         assertEquals("bloodbank.check.crossmatch.missing", missing.messageKey());
     }
 
@@ -167,9 +168,9 @@ public class IssueSafetyCheckerTest {
     public void plateletsNeedNoCrossmatch() {
         IssueSnapshot s = good();
         UnitFacts platelets = new UnitFacts(1L, UnitStatus.RESERVED, ComponentClass.PLATELETS, false, Abo.A, RhD.NEG,
-                NOW.plus(Duration.ofDays(2)), PATIENT);
+                NOW.plus(Duration.ofDays(2)), PATIENT, DIN);
         SafetyCheck check = byCode(IssueSafetyChecker.check(new IssueSnapshot(platelets, reservation(PATIENT, null),
-                PATIENT, s.profile(), s.rules(), s.secondCheck()), CLOCK)).get("CROSSMATCH");
+                PATIENT, s.profile(), s.rules(), s.secondCheck(), DIN), CLOCK)).get("CROSSMATCH");
         assertEquals(CheckStatus.PASS, check.status());
         assertEquals("bloodbank.check.crossmatch.notRequired", check.messageKey());
     }
@@ -177,7 +178,7 @@ public class IssueSafetyCheckerTest {
     private static SafetyCheck crossmatchCheck(CrossmatchResult result) {
         IssueSnapshot s = good();
         return byCode(IssueSafetyChecker.check(
-                new IssueSnapshot(s.unit(), s.reservation(), PATIENT, profile(result), s.rules(), s.secondCheck()),
+                new IssueSnapshot(s.unit(), s.reservation(), PATIENT, profile(result), s.rules(), s.secondCheck(), DIN),
                 CLOCK)).get("CROSSMATCH");
     }
 
@@ -186,13 +187,13 @@ public class IssueSafetyCheckerTest {
         for (SecondCheckOutcome outcome : SecondCheckOutcome.values()) {
             IssueSnapshot s = good();
             List<SafetyCheck> checks = IssueSafetyChecker.check(
-                    new IssueSnapshot(s.unit(), s.reservation(), PATIENT, s.profile(), s.rules(), outcome), CLOCK);
+                    new IssueSnapshot(s.unit(), s.reservation(), PATIENT, s.profile(), s.rules(), outcome, DIN), CLOCK);
             assertEquals(outcome.name(), outcome == SecondCheckOutcome.VERIFIED,
                     IssueSafetyChecker.allowsIssue(checks));
         }
         IssueSnapshot s = good();
         List<SafetyCheck> dryRun = IssueSafetyChecker
-                .check(new IssueSnapshot(s.unit(), s.reservation(), PATIENT, s.profile(), s.rules(), null), CLOCK);
+                .check(new IssueSnapshot(s.unit(), s.reservation(), PATIENT, s.profile(), s.rules(), null, DIN), CLOCK);
         assertEquals(CheckStatus.PENDING, byCode(dryRun).get("SECOND_PERSON").status());
         // a dry run with only the second person pending has nothing failed
         assertTrue(IssueSafetyChecker.nothingFailed(dryRun));
@@ -204,10 +205,10 @@ public class IssueSafetyCheckerTest {
         PatientBloodProfile rhNegative = new PatientBloodProfile(PATIENT,
                 new PatientGroup(Abo.A, RhD.NEG, true, false, 2, 2), List.of(), null, null, List.of(), List.of());
         UnitFacts rhPositivePlatelets = new UnitFacts(1L, UnitStatus.RESERVED, ComponentClass.PLATELETS, false, Abo.A,
-                RhD.POS, NOW.plus(Duration.ofDays(2)), PATIENT);
-        List<SafetyCheck> checks = IssueSafetyChecker.check(new IssueSnapshot(rhPositivePlatelets,
-                reservation(PATIENT, null), PATIENT, rhNegative, BloodBankRules.DEFAULTS, SecondCheckOutcome.VERIFIED),
-                CLOCK);
+                RhD.POS, NOW.plus(Duration.ofDays(2)), PATIENT, DIN);
+        List<SafetyCheck> checks = IssueSafetyChecker
+                .check(new IssueSnapshot(rhPositivePlatelets, reservation(PATIENT, null), PATIENT, rhNegative,
+                        BloodBankRules.DEFAULTS, SecondCheckOutcome.VERIFIED, DIN), CLOCK);
 
         assertEquals(CheckStatus.WARN, byCode(checks).get("RHD").status());
         assertTrue(IssueSafetyChecker.allowsIssue(checks));
@@ -215,7 +216,7 @@ public class IssueSafetyCheckerTest {
 
         List<SafetyCheck> blocked = IssueSafetyChecker.check(
                 new IssueSnapshot(rhPositivePlatelets, reservation(PATIENT, null), PATIENT, rhNegative,
-                        new BloodBankRules(true, RuleAction.BLOCK, RuleAction.BLOCK), SecondCheckOutcome.VERIFIED),
+                        new BloodBankRules(true, RuleAction.BLOCK, RuleAction.BLOCK), SecondCheckOutcome.VERIFIED, DIN),
                 CLOCK);
         assertFalse(IssueSafetyChecker.allowsIssue(blocked));
     }
@@ -224,9 +225,10 @@ public class IssueSafetyCheckerTest {
     public void anIncompatibleUnitIsRefusedEvenWithEverythingElseRight() {
         IssueSnapshot s = good();
         UnitFacts groupA = new UnitFacts(1L, UnitStatus.RESERVED, ComponentClass.RED_CELLS, true, Abo.B, RhD.NEG,
-                NOW.plus(Duration.ofDays(5)), PATIENT);
+                NOW.plus(Duration.ofDays(5)), PATIENT, DIN);
         List<SafetyCheck> checks = IssueSafetyChecker.check(
-                new IssueSnapshot(groupA, s.reservation(), PATIENT, s.profile(), s.rules(), s.secondCheck()), CLOCK);
+                new IssueSnapshot(groupA, s.reservation(), PATIENT, s.profile(), s.rules(), s.secondCheck(), DIN),
+                CLOCK);
         assertEquals(CheckStatus.FAIL, byCode(checks).get("ABO").status());
         assertFalse(IssueSafetyChecker.allowsIssue(checks));
     }
@@ -234,10 +236,47 @@ public class IssueSafetyCheckerTest {
     @Test
     public void noProfileMeansNothingIsKnownAboutThePatient() {
         IssueSnapshot s = good();
-        List<SafetyCheck> checks = IssueSafetyChecker
-                .check(new IssueSnapshot(s.unit(), s.reservation(), PATIENT, null, s.rules(), s.secondCheck()), CLOCK);
+        List<SafetyCheck> checks = IssueSafetyChecker.check(
+                new IssueSnapshot(s.unit(), s.reservation(), PATIENT, null, s.rules(), s.secondCheck(), DIN), CLOCK);
         assertEquals(CheckStatus.FAIL, byCode(checks).get("GROUP_CONFIRMED").status());
         assertEquals(CheckStatus.FAIL, byCode(checks).get("CROSSMATCH").status());
         assertFalse(IssueSafetyChecker.allowsIssue(checks));
+    }
+
+    private static SafetyCheck unitMatch(String scanned) {
+        IssueSnapshot s = good();
+        return byCode(IssueSafetyChecker.check(new IssueSnapshot(s.unit(), s.reservation(), s.scannedPatientId(),
+                s.profile(), s.rules(), s.secondCheck(), scanned), CLOCK)).get("UNIT_MATCH");
+    }
+
+    @Test
+    public void theBagInHandMustBeTheUnitOnScreen() {
+        // the DIN as a scan (with flags), as typed, and with its check character
+        assertEquals(CheckStatus.PASS, unitMatch("=" + DIN + "00").status());
+        assertEquals(CheckStatus.PASS, unitMatch(" " + DIN.toLowerCase() + " ").status());
+        assertEquals(CheckStatus.PASS, unitMatch(DIN + Isbt128Parser.checkCharacter(DIN)).status());
+        assertEquals("bloodbank.check.unitMatch.ok", unitMatch(DIN).messageKey());
+
+        SafetyCheck otherBag = unitMatch("G123498654322");
+        assertEquals(CheckStatus.FAIL, otherBag.status());
+        assertEquals("bloodbank.check.unitMatch.mismatch", otherBag.messageKey());
+        assertEquals(List.of("G123498654322", DIN), otherBag.args());
+
+        assertEquals("bloodbank.check.unitMatch.notScanned", unitMatch(null).messageKey());
+        assertEquals("bloodbank.check.unitMatch.notScanned", unitMatch("  ").messageKey());
+        assertEquals("bloodbank.check.unitMatch.unreadable", unitMatch("not a din").messageKey());
+        // a wrong check character is not taken as a match
+        char wrong = Isbt128Parser.checkCharacter(DIN) == 'A' ? 'B' : 'A';
+        assertEquals(CheckStatus.FAIL, unitMatch(DIN + wrong).status());
+    }
+
+    @Test
+    public void anotherBagStopsTheIssueEvenWithEverythingElseRight() {
+        IssueSnapshot s = good();
+        List<SafetyCheck> checks = IssueSafetyChecker.check(new IssueSnapshot(s.unit(), s.reservation(),
+                s.scannedPatientId(), s.profile(), s.rules(), s.secondCheck(), "G123498654322"), CLOCK);
+        assertFalse(IssueSafetyChecker.allowsIssue(checks));
+        assertFalse(IssueSafetyChecker.nothingFailed(checks));
+        assertEquals(1, checks.stream().filter(c -> c.status() == CheckStatus.FAIL).count());
     }
 }

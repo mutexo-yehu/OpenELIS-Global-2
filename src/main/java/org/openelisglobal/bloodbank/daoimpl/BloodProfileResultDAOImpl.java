@@ -18,12 +18,15 @@ public class BloodProfileResultDAOImpl implements BloodProfileResultDAO {
     /**
      * One query: result → analysis → test, sample item → sample, and the sample's
      * patient through SampleHuman (which holds plain ids, hence the theta join).
+     * The order form records the collection time on the sample item; older paths on
+     * the sample.
      */
     private static final String RESULTS_HQL = "SELECT r.id, r.value, r.resultType, t.localCode, s.id,"
-            + " s.accessionNumber, s.collectionDate"
+            + " s.accessionNumber, COALESCE(si.collectionDate, s.collectionDate)"
             + " FROM Result r JOIN r.analysis a JOIN a.test t JOIN a.sampleItem si JOIN si.sample s, SampleHuman sh"
             + " WHERE sh.sampleId = s.id AND sh.patientId = :patientId AND a.statusId = :statusId"
-            + " AND LOWER(t.localCode) IN (:codes)" + " ORDER BY s.collectionDate DESC, r.id DESC";
+            + " AND LOWER(t.localCode) IN (:codes)"
+            + " ORDER BY COALESCE(si.collectionDate, s.collectionDate) DESC, r.id DESC";
 
     @PersistenceContext
     private EntityManager entityManager;

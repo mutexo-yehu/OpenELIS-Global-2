@@ -32,7 +32,7 @@ public interface BloodIssueService {
      * The issue checklist as it stands, with the second person still to sign.
      * Writes nothing.
      */
-    IssueCheck check(Long unitId, String patientIdentifier);
+    IssueCheck check(Long unitId, String patientIdentifier, String scannedDonationNumber);
 
     /**
      * Issues the unit: re-authenticates the second person, then repeats every check

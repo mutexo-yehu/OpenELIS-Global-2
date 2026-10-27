@@ -182,9 +182,10 @@ public class BloodIssueServiceImpl implements BloodIssueService {
 
     @Override
     @Transactional(readOnly = true)
-    public IssueCheck check(Long unitId, String patientIdentifier) {
+    public IssueCheck check(Long unitId, String patientIdentifier, String scannedDonationNumber) {
         BloodUnit unit = unitDAO.get(unitId).orElseThrow(() -> BloodUnitServiceImpl.notFound(unitId));
-        IssueSnapshot snapshot = snapshot(unit, patientIdentifier, SecondCheckOutcome.NOT_PROVIDED);
+        IssueSnapshot snapshot = snapshot(unit, patientIdentifier, scannedDonationNumber,
+                SecondCheckOutcome.NOT_PROVIDED);
         List<SafetyCheck> checks = IssueSafetyChecker.check(snapshot, clock);
         return new IssueCheck(unitId, snapshot.scannedPatientId(), IssueSafetyChecker.nothingFailed(checks),
                 IssueSafetyChecker.needsWarningReason(checks), checks);
@@ -208,7 +209,8 @@ public class BloodIssueServiceImpl implements BloodIssueService {
                 request.secondCheckerPassword(), request.secondCheckerOtp());
 
         BloodUnit unit = unitDAO.getForUpdate(unitId).orElseThrow(() -> BloodUnitServiceImpl.notFound(unitId));
-        IssueSnapshot snapshot = snapshot(unit, request.patientIdentifier(), second.outcome());
+        IssueSnapshot snapshot = snapshot(unit, request.patientIdentifier(), request.scannedDonationNumber(),
+                second.outcome());
         List<SafetyCheck> checks = IssueSafetyChecker.check(snapshot, clock);
         if (!IssueSafetyChecker.allowsIssue(checks)) {
             throw new BloodBankException(Kind.UNSAFE, "bloodbank.issue.error.checksFailed", checks);
@@ -303,7 +305,8 @@ public class BloodIssueServiceImpl implements BloodIssueService {
                 .orElseThrow(() -> new BloodBankException(Kind.CONFLICT, "bloodbank.error.notIssued", "ISSUED"));
     }
 
-    private IssueSnapshot snapshot(BloodUnit unit, String patientIdentifier, SecondCheckOutcome secondCheck) {
+    private IssueSnapshot snapshot(BloodUnit unit, String patientIdentifier, String scannedDonationNumber,
+            SecondCheckOutcome secondCheck) {
         BloodUnitReservation reservation = reservationDAO.getForUnit(unit.getId(), ReservationStatus.ACTIVE)
                 .orElse(null);
         Long scannedPatientId = profileService.resolvePatientIdentifier(patientIdentifier);
@@ -313,13 +316,13 @@ public class BloodIssueServiceImpl implements BloodIssueService {
                 : new ReservationFacts(reservation.getId(), reservation.getPatientId(), reservation.getStatus(),
                         reservation.getCrossmatchResultId());
         return new IssueSnapshot(facts(unit), reservationFacts, scannedPatientId, profile,
-                settingsService.get().rules(), secondCheck);
+                settingsService.get().rules(), secondCheck, scannedDonationNumber);
     }
 
     private static UnitFacts facts(BloodUnit unit) {
         return new UnitFacts(unit.getId(), unit.getStatus(), unit.getProductType().getComponentClass(),
                 unit.getProductType().needsCrossmatch(), unit.getAbo(), unit.getRhd(),
-                BloodBankMapper.instant(unit.getExpiresAt()), unit.getPatientId());
+                BloodBankMapper.instant(unit.getExpiresAt()), unit.getPatientId(), unit.getDonationNumber());
     }
 
     private UnitActionResult result(BloodUnit unit, Instant now, List<BloodUnitEvent> events) {

@@ -11,6 +11,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.time.Instant;
 import java.util.List;
 import org.junit.Test;
+import org.openelisglobal.bloodbank.form.BloodBankForms.IssueCheckRequest;
 import org.openelisglobal.bloodbank.form.BloodBankForms.IssueRequest;
 import org.openelisglobal.bloodbank.form.BloodBankViews.IssueCheck;
 import org.openelisglobal.bloodbank.safety.PatientBloodProfile;
@@ -79,14 +80,17 @@ public class BloodBankJsonContractTest {
 
     @Test
     public void theIssueRequestIsReadFromJsonAndNeverPrintsThePassword() throws Exception {
-        IssueRequest request = MAPPER.readValue(
-                "{\"patientIdentifier\":\"LAB-1\",\"location\":\"Ward 3\","
-                        + "\"collectorName\":\"Porter\",\"secondCheckerLogin\":\"checker\","
-                        + "\"secondCheckerPassword\":\"s3cret-value\",\"warningReason\":\"agreed\"}",
-                IssueRequest.class);
+        IssueRequest request = MAPPER.readValue("{\"patientIdentifier\":\"LAB-1\",\"location\":\"Ward 3\","
+                + "\"collectorName\":\"Porter\",\"secondCheckerLogin\":\"checker\","
+                + "\"secondCheckerPassword\":\"s3cret-value\",\"warningReason\":\"agreed\","
+                + "\"scannedDonationNumber\":\"=G12349865432100\"}", IssueRequest.class);
 
         assertEquals("checker", request.secondCheckerLogin());
         assertEquals("s3cret-value", request.secondCheckerPassword());
         assertFalse(request.toString().contains("s3cret-value"));
+        assertEquals("=G12349865432100", request.scannedDonationNumber());
+        assertEquals("G123498654321",
+                MAPPER.readValue("{\"patientIdentifier\":\"LAB-1\",\"scannedDonationNumber\":\"G123498654321\"}",
+                        IssueCheckRequest.class).scannedDonationNumber());
     }
 }

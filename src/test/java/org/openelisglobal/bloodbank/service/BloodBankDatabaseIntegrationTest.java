@@ -203,6 +203,17 @@ public class BloodBankDatabaseIntegrationTest extends BaseWebContextSensitiveTes
         return new long[] { sample, item };
     }
 
+    /**
+     * A sample as the order form saves it: the collection time on the sample item
+     * only. Returns {sampleId, sampleItemId}.
+     */
+    private long[] orderFormSample(long patientId, String accession, Timestamp collected) {
+        long[] ids = sample(patientId, accession, collected);
+        jdbcTemplate.update("UPDATE sample SET collection_date = NULL WHERE id = ?", ids[0]);
+        jdbcTemplate.update("UPDATE sample_item SET collection_date = ? WHERE id = ?", collected, ids[1]);
+        return ids;
+    }
+
     /** A result on its own analysis; returns the result id. */
     private long result(long sampleItem, long testId, String analysisStatus, String type, String value) {
         long analysis = nextId("analysis_seq");
@@ -277,6 +288,22 @@ public class BloodBankDatabaseIntegrationTest extends BaseWebContextSensitiveTes
         assertFalse(otherProfile.group().confirmed());
         assertEquals(1, otherProfile.typings().size());
         assertTrue(otherProfile.crossmatches().isEmpty());
+    }
+
+    @Test
+    public void aCrossmatchOrderedThroughTheOrderFormIsValidFromItsCollection() {
+        long patient = patient("BBNIDO" + suffix + ThreadLocalRandom.current().nextInt(1000));
+        Timestamp collected = Timestamp.from(NOW.minus(Duration.ofHours(2)));
+        long[] s = orderFormSample(patient, accession(), collected);
+        result(s[1], testAbo, finalized, "D", String.valueOf(dictA));
+        long crossmatch = result(s[1], testCrossmatch, finalized, "D", String.valueOf(dictCompatible));
+
+        PatientBloodProfile profile = profileService.getProfile(patient);
+
+        assertEquals(Long.valueOf(crossmatch), profile.crossmatches().get(0).resultId());
+        assertEquals(collected.toInstant(), profile.crossmatches().get(0).collectedAt());
+        assertEquals(collected.toInstant().plus(Duration.ofHours(72)), profile.crossmatches().get(0).validUntil());
+        assertEquals(collected.toInstant(), profile.typings().get(0).collectedAt());
     }
 
     @Test
@@ -419,7 +446,9 @@ public class BloodBankDatabaseIntegrationTest extends BaseWebContextSensitiveTes
         // the crossmatch now shows which unit it covers
         assertEquals(unitId, profileService.getProfile(grouped.patientId()).crossmatches().get(0).linkedUnitId());
 
-        IssueCheck dryRun = issueService.check(unitId, grouped.lastAccession());
+        IssueCheck otherBag = issueService.check(unitId, grouped.lastAccession(), "G123498654322");
+        assertFalse(String.valueOf(otherBag.checks()), otherBag.allowed());
+        IssueCheck dryRun = issueService.check(unitId, grouped.lastAccession(), din);
         assertTrue(String.valueOf(dryRun.checks()), dryRun.allowed());
 
         BloodIssueServiceImpl issueTarget = target(issueService, BloodIssueServiceImpl.class);
@@ -430,9 +459,8 @@ public class BloodBankDatabaseIntegrationTest extends BaseWebContextSensitiveTes
                         : new Verification(SecondCheckOutcome.INVALID_CREDENTIALS, null);
         ReflectionTestUtils.setField(issueTarget, "secondPersonVerifier", verifiedAsUser2);
         try {
-            UnitActionResult issued = issueService.issue(unitId,
-                    new IssueRequest(grouped.lastAccession(), "Ward 3", "Porter Example", "second", "pw", null, null),
-                    TEST_SYS_USER_ID);
+            UnitActionResult issued = issueService.issue(unitId, new IssueRequest(grouped.lastAccession(), "Ward 3",
+                    "Porter Example", "second", "pw", null, null, din), TEST_SYS_USER_ID);
             assertEquals(UnitStatus.ISSUED, issued.unit().status());
         } finally {
             ReflectionTestUtils.setField(issueTarget, "secondPersonVerifier", realVerifier);

@@ -5,6 +5,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyZeroInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -14,6 +15,7 @@ import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
 import org.openelisglobal.bloodbank.form.BloodBankForms.IssueRequest;
+import org.openelisglobal.bloodbank.form.BloodBankViews.IssueCheck;
 import org.openelisglobal.bloodbank.safety.SafetyCheck;
 import org.openelisglobal.bloodbank.service.BloodBankException;
 import org.openelisglobal.bloodbank.service.BloodBankException.Kind;
@@ -183,7 +185,7 @@ public class BloodBankRestSecurityTest extends SecuritySliceMockMvcTest {
 
     @Test
     public void refusalsMapToTheirStatusWithTheChecklist() throws Exception {
-        IssueRequest empty = new IssueRequest(null, null, null, null, null, null, null);
+        IssueRequest empty = new IssueRequest(null, null, null, null, null, null, null, null);
         when(issueService.issue(5L, empty, "10"))
                 .thenThrow(new BloodBankException(Kind.UNSAFE, "bloodbank.issue.error.checksFailed",
                         List.of(SafetyCheck.fail("ABO", "bloodbank.check.abo.incompatible", "A", "O"))));
@@ -205,6 +207,46 @@ public class BloodBankRestSecurityTest extends SecuritySliceMockMvcTest {
         // the trace needs exactly one criterion
         assertEquals(400, status(get("/rest/bloodbank/trace?unit=5&patient=501"), user("results").roles("RESULTS")));
         verifyZeroInteractions(traceService);
+    }
+
+    @Test
+    public void theScannedBagReachesTheServerChecksForABenchUser() throws Exception {
+        when(issueService.check(5L, "LAB-1", "=G12349865432200"))
+                .thenReturn(new IssueCheck(5L, 501L, false, false, List.of(SafetyCheck.fail("UNIT_MATCH",
+                        "bloodbank.check.unitMatch.mismatch", "G123498654322", "G123498654321"))));
+        MvcResult result = mockMvc.perform(request(HttpMethod.POST, "/rest/bloodbank/units/5/issue/check")
+                .session(sessionForSysUser(10)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"patientIdentifier\":\"LAB-1\",\"scannedDonationNumber\":\"=G12349865432200\"}")
+                .with(user("results").roles("RESULTS"))).andReturn();
+
+        assertEquals(200, result.getResponse().getStatus());
+        String body = result.getResponse().getContentAsString();
+        assertTrue(body, body.contains("\"code\":\"UNIT_MATCH\"") && body.contains("\"allowed\":false"));
+        verify(issueService).check(5L, "LAB-1", "=G12349865432200");
+
+        IssueRequest scanned = new IssueRequest("LAB-1", "Ward 3", "Porter", "checker", "pw", null, null,
+                "=G12349865432200");
+        when(issueService.issue(5L, scanned, "10")).thenThrow(new BloodBankException(Kind.UNSAFE,
+                "bloodbank.issue.error.checksFailed", List.of(SafetyCheck.fail("UNIT_MATCH",
+                        "bloodbank.check.unitMatch.mismatch", "G123498654322", "G123498654321"))));
+        MvcResult refused = mockMvc.perform(request(HttpMethod.POST, "/rest/bloodbank/units/5/issue")
+                .session(sessionForSysUser(10)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"patientIdentifier\":\"LAB-1\",\"location\":\"Ward 3\",\"collectorName\":\"Porter\","
+                        + "\"secondCheckerLogin\":\"checker\",\"secondCheckerPassword\":\"pw\","
+                        + "\"scannedDonationNumber\":\"=G12349865432200\"}")
+                .with(user("results").roles("RESULTS"))).andReturn();
+        assertEquals(422, refused.getResponse().getStatus());
+        verify(issueService).issue(5L, scanned, "10");
+    }
+
+    @Test
+    public void theScannedBagIsNotCheckedForACallerWithoutABenchRole() throws Exception {
+        MvcResult result = mockMvc.perform(request(HttpMethod.POST, "/rest/bloodbank/units/5/issue/check")
+                .session(sessionForSysUser(10)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"patientIdentifier\":\"LAB-1\",\"scannedDonationNumber\":\"=G12349865432200\"}")
+                .with(user("reception").roles("RECEPTION"))).andReturn();
+        assertEquals(403, result.getResponse().getStatus());
+        verifyZeroInteractions(services());
     }
 
     private int status(Endpoint endpoint, RequestPostProcessor principal) throws Exception {

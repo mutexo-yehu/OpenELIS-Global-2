@@ -151,11 +151,14 @@ describe("issue requests", () => {
     warningReason: "",
   };
 
-  it("sends the dry-run check with the scanned patient identifier", async () => {
-    await BloodBankService.issueCheck(5, " 26-000123 ");
+  it("sends the dry-run check with the scanned patient and bag", async () => {
+    await BloodBankService.issueCheck(5, " 26-000123 ", " =G123498654321 00 ");
     expect(lastPost()).toEqual({
       endpoint: "/rest/bloodbank/units/5/issue/check",
-      body: { patientIdentifier: "26-000123" },
+      body: {
+        patientIdentifier: "26-000123",
+        scannedDonationNumber: "=G123498654321 00",
+      },
     });
   });
 
@@ -165,6 +168,7 @@ describe("issue requests", () => {
       endpoint: "/rest/bloodbank/units/5/issue",
       body: {
         patientIdentifier: "26-000123",
+        scannedDonationNumber: "=G123498654321 00",
         location: "Ward 3",
         collectorName: "Porter Example",
         secondCheckerLogin: "checker",

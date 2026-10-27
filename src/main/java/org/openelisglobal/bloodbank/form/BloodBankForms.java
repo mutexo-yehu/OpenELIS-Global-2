@@ -44,27 +44,33 @@ public final class BloodBankForms {
     }
 
     /**
-     * @param patientIdentifier the lab number (accession) or patient identifier
-     *                          scanned at the bedside request form or wristband
+     * @param patientIdentifier     the lab number (accession) or patient identifier
+     *                              scanned at the bedside request form or wristband
+     * @param scannedDonationNumber the donation number scanned from the bag in
+     *                              hand; it must be this unit's
      */
-    public record IssueCheckRequest(String patientIdentifier) {
+    public record IssueCheckRequest(String patientIdentifier, String scannedDonationNumber) {
     }
 
     /**
-     * @param location         ward or theatre the unit goes to
-     * @param collectorName    who takes the unit from the lab
-     * @param secondCheckerOtp authenticator code, when the second checker's account
-     *                         has one
-     * @param warningReason    required when a check passed with a warning
+     * @param location              ward or theatre the unit goes to
+     * @param collectorName         who takes the unit from the lab
+     * @param secondCheckerOtp      authenticator code, when the second checker's
+     *                              account has one
+     * @param warningReason         required when a check passed with a warning
+     * @param scannedDonationNumber the donation number scanned from the bag in
+     *                              hand; it must be this unit's
      */
     public record IssueRequest(String patientIdentifier, String location, String collectorName,
-            String secondCheckerLogin, String secondCheckerPassword, String secondCheckerOtp, String warningReason) {
+            String secondCheckerLogin, String secondCheckerPassword, String secondCheckerOtp, String warningReason,
+            String scannedDonationNumber) {
 
         /** Never print the password. */
         @Override
         public String toString() {
-            return "IssueRequest[patientIdentifier=" + patientIdentifier + ", location=" + location + ", collectorName="
-                    + collectorName + ", secondCheckerLogin=" + secondCheckerLogin + "]";
+            return "IssueRequest[patientIdentifier=" + patientIdentifier + ", scannedDonationNumber="
+                    + scannedDonationNumber + ", location=" + location + ", collectorName=" + collectorName
+                    + ", secondCheckerLogin=" + secondCheckerLogin + "]";
         }
     }
 

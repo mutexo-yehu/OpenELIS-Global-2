@@ -1,6 +1,7 @@
 package org.openelisglobal.bloodbank.service;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -65,6 +66,7 @@ public class BloodIssueServiceImplTest {
     private static final Long UNIT = 1L;
     private static final Long CROSSMATCH = 9001L;
     private static final String LAB_NUMBER = "LAB-0001";
+    private static final String BAG_DIN = "G123498654321";
 
     @Mock
     private BloodUnitDAO unitDAO;
@@ -107,7 +109,7 @@ public class BloodIssueServiceImplTest {
         type.setRequiresCrossmatch(component.carriesRedCells());
         BloodUnit unit = new BloodUnit();
         unit.setId(UNIT);
-        unit.setDonationNumber("G123498654321");
+        unit.setDonationNumber(BAG_DIN);
         unit.setProductCode("E0291V00");
         unit.setProductType(type);
         unit.setAbo(abo);
@@ -298,7 +300,7 @@ public class BloodIssueServiceImplTest {
 
     private IssueRequest request(String warningReason) {
         return new IssueRequest(LAB_NUMBER, "Ward 3", "Porter Example", "checker", "secret-password", null,
-                warningReason);
+                warningReason, BAG_DIN);
     }
 
     private void readyToIssue(Verification verification) {
@@ -353,12 +355,57 @@ public class BloodIssueServiceImplTest {
         when(profileService.resolvePatientIdentifier("LAB-OTHER")).thenReturn(777L);
 
         BloodBankException e = expectRefusal(() -> service.issue(UNIT,
-                new IssueRequest("LAB-OTHER", "Ward 3", "Porter", "checker", "secret-password", null, null), ISSUER));
+                new IssueRequest("LAB-OTHER", "Ward 3", "Porter", "checker", "secret-password", null, null, BAG_DIN),
+                ISSUER));
 
         assertEquals("bloodbank.issue.error.checksFailed", e.getErrorCode());
         assertTrue(e.getChecks().stream()
                 .anyMatch(c -> "PATIENT_MATCH".equals(c.code()) && c.status() == CheckStatus.FAIL));
         verifyZeroInteractions(eventDAO);
+    }
+
+    @Test
+    public void issueIsRefusedWhenTheBagInHandIsAnotherUnit() {
+        readyToIssue(new Verification(SecondCheckOutcome.VERIFIED, 11));
+
+        BloodBankException e = expectRefusal(() -> service.issue(UNIT, new IssueRequest(LAB_NUMBER, "Ward 3",
+                "Porter Example", "checker", "secret-password", null, null, "=G12349865432200"), ISSUER));
+
+        assertEquals(Kind.UNSAFE, e.getKind());
+        assertEquals("bloodbank.issue.error.checksFailed", e.getErrorCode());
+        assertTrue(e.getChecks().stream().anyMatch(c -> "UNIT_MATCH".equals(c.code()) && c.status() == CheckStatus.FAIL
+                && "bloodbank.check.unitMatch.mismatch".equals(c.messageKey())));
+        verify(reservationDAO, never()).update(reservation);
+        verify(unitDAO, never()).update(unit);
+        verifyZeroInteractions(eventDAO);
+    }
+
+    @Test
+    public void issueIsRefusedWhenNoBagWasScanned() {
+        readyToIssue(new Verification(SecondCheckOutcome.VERIFIED, 11));
+
+        BloodBankException e = expectRefusal(() -> service.issue(UNIT, new IssueRequest(LAB_NUMBER, "Ward 3",
+                "Porter Example", "checker", "secret-password", null, null, null), ISSUER));
+
+        assertTrue(e.getChecks().stream().anyMatch(
+                c -> "UNIT_MATCH".equals(c.code()) && "bloodbank.check.unitMatch.notScanned".equals(c.messageKey())));
+        verifyZeroInteractions(eventDAO);
+    }
+
+    @Test
+    public void theDryRunShowsAnotherBagAsFailed() {
+        reservedFor(PATIENT);
+        when(unitDAO.get(UNIT)).thenReturn(Optional.of(unit));
+        when(profileService.resolvePatientIdentifier(LAB_NUMBER)).thenReturn(PATIENT);
+        when(profileService.getProfile(PATIENT))
+                .thenReturn(profile(Abo.A, RhD.NEG, crossmatch(NOW.plus(Duration.ofHours(5)), true, UNIT)));
+
+        IssueCheck check = service.check(UNIT, LAB_NUMBER, "G123498654322");
+
+        assertFalse(check.allowed());
+        assertEquals(CheckStatus.FAIL,
+                check.checks().stream().filter(c -> "UNIT_MATCH".equals(c.code())).findFirst().get().status());
+        verifyZeroInteractions(secondPersonVerifier, eventDAO);
     }
 
     @Test
@@ -386,11 +433,11 @@ public class BloodIssueServiceImplTest {
     public void wardCollectorAndPatientAreRequiredBeforeAnyoneIsAsked() {
         assertEquals("bloodbank.issue.error.locationRequired",
                 expectRefusal(() -> service.issue(UNIT,
-                        new IssueRequest(LAB_NUMBER, " ", "Porter", "checker", "pw", null, null), ISSUER))
+                        new IssueRequest(LAB_NUMBER, " ", "Porter", "checker", "pw", null, null, BAG_DIN), ISSUER))
                         .getErrorCode());
         assertEquals("bloodbank.issue.error.collectorRequired",
                 expectRefusal(() -> service.issue(UNIT,
-                        new IssueRequest(LAB_NUMBER, "Ward", null, "checker", "pw", null, null), ISSUER))
+                        new IssueRequest(LAB_NUMBER, "Ward", null, "checker", "pw", null, null, BAG_DIN), ISSUER))
                         .getErrorCode());
         assertEquals("bloodbank.issue.error.patientIdentifierRequired",
                 expectRefusal(() -> service.issue(UNIT, null, ISSUER)).getErrorCode());
@@ -405,7 +452,7 @@ public class BloodIssueServiceImplTest {
         when(profileService.getProfile(PATIENT))
                 .thenReturn(profile(Abo.A, RhD.NEG, crossmatch(NOW.plus(Duration.ofHours(5)), true, UNIT)));
 
-        IssueCheck check = service.check(UNIT, LAB_NUMBER);
+        IssueCheck check = service.check(UNIT, LAB_NUMBER, BAG_DIN);
 
         assertTrue(check.allowed());
         assertEquals(PATIENT, check.scannedPatientId());
@@ -506,11 +553,11 @@ public class BloodIssueServiceImplTest {
         when(profileService.resolvePatientIdentifier(LAB_NUMBER)).thenReturn(PATIENT);
         when(profileService.getProfile(PATIENT)).thenReturn(oneSample);
 
-        assertEquals(false, service.check(UNIT, LAB_NUMBER).allowed());
+        assertEquals(false, service.check(UNIT, LAB_NUMBER, BAG_DIN).allowed());
 
         when(settingsService.get()).thenReturn(new BloodBankSettings("", "", "", "", "", List.of("Compatible"), 72, 48,
                 30, true, RuleAction.WARN, RuleAction.WARN));
-        IssueCheck warned = service.check(UNIT, LAB_NUMBER);
+        IssueCheck warned = service.check(UNIT, LAB_NUMBER, BAG_DIN);
         assertTrue(warned.allowed());
         assertTrue(warned.warningReasonRequired());
         verify(profileService, times(2)).getProfile(eq(PATIENT));

@@ -35,7 +35,8 @@ const EMPTY = {
  * identifier, and run the server's safety checks. A failed check blocks the
  * issue; a warning needs a documented reason. Step 2: ward and collector, then
  * a second, different user re-authenticates. The server repeats every check
- * when the issue is submitted.
+ * when the issue is submitted, including that the scanned bag is this unit
+ * (the match below only guides the user; the server decides).
  */
 const IssueModal = ({ open, unit, onClose, onIssued }) => {
   const intl = useIntl();
@@ -72,7 +73,7 @@ const IssueModal = ({ open, unit, onClose, onIssued }) => {
   const runCheck = () => {
     setBusy(true);
     setError(null);
-    BloodBankService.issueCheck(unit.id, form.patientIdentifier)
+    BloodBankService.issueCheck(unit.id, form.patientIdentifier, form.unitScan)
       .then((result) => {
         setCheck(result);
         setChecks(result.checks || []);

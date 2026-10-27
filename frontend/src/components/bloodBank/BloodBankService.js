@@ -161,13 +161,16 @@ const BloodBankService = {
     ),
   releaseReservation: (reservationId, reason) =>
     post(`/reservations/${reservationId}/release`, { reason }),
-  issueCheck: (unitId, patientIdentifier) =>
+  // the server compares the scanned bag with the unit; it is sent as scanned
+  issueCheck: (unitId, patientIdentifier, unitScan) =>
     post(`/units/${unitId}/issue/check`, {
       patientIdentifier: patientIdentifier.trim(),
+      scannedDonationNumber: (unitScan || "").trim(),
     }),
   issue: (
     unitId,
     {
+      unitScan,
       patientIdentifier,
       location,
       collectorName,
@@ -181,6 +184,7 @@ const BloodBankService = {
       `/units/${unitId}/issue`,
       compact({
         patientIdentifier: patientIdentifier.trim(),
+        scannedDonationNumber: (unitScan || "").trim(),
         location: location.trim(),
         collectorName: collectorName.trim(),
         secondCheckerLogin: secondCheckerLogin.trim(),

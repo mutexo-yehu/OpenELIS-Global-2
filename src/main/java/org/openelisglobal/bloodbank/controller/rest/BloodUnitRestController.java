@@ -119,7 +119,8 @@ public class BloodUnitRestController extends BloodBankRestSupport {
     @PostMapping("/{id}/issue/check")
     @PreAuthorize(BloodBankGuards.BENCH)
     public IssueCheck issueCheck(@PathVariable("id") Long id, @RequestBody(required = false) IssueCheckRequest body) {
-        return issueService.check(id, body == null ? null : body.patientIdentifier());
+        return issueService.check(id, body == null ? null : body.patientIdentifier(),
+                body == null ? null : body.scannedDonationNumber());
     }
 
     @PostMapping("/{id}/issue")
