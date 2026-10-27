@@ -27,12 +27,15 @@ import { useHistory } from "react-router-dom";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { hasRole, Roles } from "../utils/Utils";
 import BloodBankService from "./BloodBankService";
+import BloodBankPager, { usePage } from "./BloodBankPager";
 import ReasonModal from "./ReasonModal";
 import {
+  durationText,
   errorText,
   formatInstant,
   groupText,
   productText,
+  returnOutcome,
   statusText,
 } from "./bloodBankFormat";
 import "./BloodBank.css";
@@ -131,7 +134,14 @@ const BloodBankStock = () => {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState(null);
-  const [action, setAction] = useState(null); // { name, unit }
+  const [action, setAction] = useState(null); // { name, unit, at }
+  // what a return will do depends on the time: keep the menu up to date
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     BloodBankService.productTypes()
@@ -211,8 +221,9 @@ const BloodBankStock = () => {
     },
     { key: "actions", header: "" },
   ];
+  const paging = usePage(units, `${tab}|${JSON.stringify(filters)}`);
   const byId = Object.fromEntries(units.map((u) => [String(u.id), u]));
-  const rows = units.map((u) => ({
+  const rows = paging.shown.map((u) => ({
     id: String(u.id),
     donationNumber: u.donationNumber,
     product: productText(u),
@@ -223,17 +234,62 @@ const BloodBankStock = () => {
     actions: "",
   }));
 
-  const modalText = (name, unit) => {
+  const actionText = (name, unit) => {
+    if (name === "return") {
+      const outcome = returnOutcome(unit, now);
+      if (outcome?.late) {
+        return intl.formatMessage(
+          { id: "bloodbank.action.returnLate" },
+          { minutes: outcome.windowMinutes },
+        );
+      }
+    }
+    return intl.formatMessage({ id: `bloodbank.action.${name}` });
+  };
+
+  const modalText = (name, unit, at) => {
     const din = unit?.donationNumber;
     const t = (id, values) => intl.formatMessage({ id }, values);
     switch (name) {
-      case "return":
+      case "return": {
+        // worked out when the pop-up opened; the server decides on submit
+        const outcome = returnOutcome(unit, at);
+        if (!outcome) {
+          return {
+            title: t("bloodbank.return.title", { din }),
+            label: t("bloodbank.field.reasonOptional"),
+            helper: t("bloodbank.return.helper"),
+            required: false,
+          };
+        }
+        const values = {
+          din,
+          ago: durationText(intl, outcome.minutesOut),
+          minutes: outcome.windowMinutes,
+        };
         return {
-          title: t("bloodbank.return.title", { din }),
+          title: t(
+            outcome.late
+              ? "bloodbank.return.titleLate"
+              : "bloodbank.return.title",
+            { din },
+          ),
           label: t("bloodbank.field.reasonOptional"),
-          helper: t("bloodbank.return.helper"),
+          helper: t(
+            outcome.late
+              ? "bloodbank.return.issuedAgoLate"
+              : "bloodbank.return.issuedAgo",
+            values,
+          ),
+          primaryText: t(
+            outcome.late
+              ? "bloodbank.return.submitLate"
+              : "bloodbank.return.submit",
+          ),
+          danger: outcome.late,
           required: false,
         };
+      }
       case "transfused":
         return {
           title: t("bloodbank.transfused.title", { din }),
@@ -256,7 +312,7 @@ const BloodBankStock = () => {
         };
     }
   };
-  const modal = action ? modalText(action.name, action.unit) : null;
+  const modal = action ? modalText(action.name, action.unit, action.at) : null;
 
   return (
     <div>
@@ -402,15 +458,22 @@ const BloodBankStock = () => {
                                 aria-label={intl.formatMessage({
                                   id: "bloodbank.action.menu",
                                 })}
+                                iconDescription={intl.formatMessage({
+                                  id: "bloodbank.action.menu",
+                                })}
                               >
                                 {names.map((n) => (
                                   <OverflowMenuItem
                                     key={n}
-                                    itemText={intl.formatMessage({
-                                      id: `bloodbank.action.${n}`,
-                                    })}
+                                    itemText={actionText(n, unit)}
                                     isDelete={n === "discard"}
-                                    onClick={() => setAction({ name: n, unit })}
+                                    onClick={() =>
+                                      setAction({
+                                        name: n,
+                                        unit,
+                                        at: Date.now(),
+                                      })
+                                    }
                                   />
                                 ))}
                                 <OverflowMenuItem
@@ -439,6 +502,7 @@ const BloodBankStock = () => {
           </TableContainer>
         )}
       </DataTable>
+      <BloodBankPager id="bb-stock-pages" paging={paging} />
       <ReasonModal
         open={!!action}
         title={modal?.title}
@@ -446,6 +510,7 @@ const BloodBankStock = () => {
         helper={modal?.helper}
         required={modal?.required}
         danger={modal?.danger}
+        primaryText={modal?.primaryText}
         onSubmit={(text) => runAction(action.name, action.unit, text)}
         onClose={() => setAction(null)}
       />

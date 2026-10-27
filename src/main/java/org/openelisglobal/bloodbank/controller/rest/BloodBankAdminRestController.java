@@ -70,7 +70,9 @@ public class BloodBankAdminRestController extends BloodBankRestSupport {
         return catalogService.updateType(id, form, getSysUserId(request));
     }
 
+    /** Read by the receipt screen too: its product code list. */
     @GetMapping("/product-codes")
+    @PreAuthorize(BloodBankGuards.READ)
     public List<ProductCodeView> productCodes() {
         return catalogService.getCodes();
     }

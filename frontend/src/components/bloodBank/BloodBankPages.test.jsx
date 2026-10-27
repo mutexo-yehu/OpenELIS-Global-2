@@ -2,7 +2,7 @@ import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { waitFor } from "@testing-library/dom";
 import "@testing-library/jest-dom";
-import { IntlProvider } from "react-intl";
+import { createIntl, IntlProvider } from "react-intl";
 import { MemoryRouter } from "react-router-dom";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import {
@@ -13,6 +13,7 @@ import {
 } from "./BloodBankPages";
 import { ProfilePanel } from "./BloodBankPatientIssue";
 import BloodBankService from "./BloodBankService";
+import { lineErrorsText } from "./bloodBankFormat";
 import messages from "../../languages/en.json";
 
 vi.mock("../patient/SearchPatientForm", () => ({
@@ -22,6 +23,9 @@ vi.mock("../patient/SearchPatientForm", () => ({
 vi.mock("./BloodBankService", () => ({
   default: {
     productTypes: vi.fn(),
+    productCodes: vi.fn(),
+    parseScans: vi.fn(),
+    receive: vi.fn(),
     listUnits: vi.fn(),
     summary: vi.fn(),
     trace: vi.fn(),
@@ -60,6 +64,21 @@ beforeEach(() => {
   vi.clearAllMocks();
   BloodBankService.productTypes.mockResolvedValue([
     { id: 1, name: "Red cells", componentClass: "RED_CELLS" },
+  ]);
+  BloodBankService.productCodes.mockResolvedValue([
+    {
+      id: 1,
+      isbtCodePrefix: "E0291",
+      description: "Red cells (example)",
+      active: true,
+      productType: { id: 1, name: "Red cells", active: true },
+    },
+    {
+      id: 2,
+      isbtCodePrefix: "E0869",
+      active: false,
+      productType: { id: 2, name: "Plasma", active: true },
+    },
   ]);
   BloodBankService.listUnits.mockResolvedValue([
     unit({ id: 1, donationNumber: "G123498654321", expiringSoon: true }),
@@ -269,5 +288,199 @@ describe("blood bank pages", () => {
     expect(
       screen.getByText(/^26-0002 .*ABO B, RhD Positive$/),
     ).toBeInTheDocument();
+  });
+
+  it("receive asks for every required field, by its label, before adding a line", async () => {
+    renderPage(BloodBankReceivePage);
+    fireEvent.change(screen.getByLabelText(messages["bloodbank.field.din"]), {
+      target: { value: "X999926100002" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: messages["bloodbank.receive.addLine"],
+      }),
+    );
+
+    expect(
+      await screen.findByText(
+        "Still needed for this line: Product code, Blood group, Expires",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(messages["bloodbank.receive.pending.empty"]),
+    ).toBeInTheDocument();
+    expect(BloodBankService.receive).not.toHaveBeenCalled();
+  });
+
+  it("receive fills the group and product lists from scans and shows a typed expiry as local time", async () => {
+    BloodBankService.parseScans.mockResolvedValue({
+      donationNumber: "X999926100002",
+      abo: "A",
+      rhd: "POS",
+      productCode: "E0291V01",
+      productType: { id: 1, name: "Red cells" },
+      errors: [],
+    });
+    renderPage(BloodBankReceivePage);
+    const groupList = screen.getByLabelText(messages["bloodbank.field.group"]);
+    const productList = screen.getByLabelText(
+      messages["bloodbank.field.productCode"],
+    );
+    // the eight ABO/RhD groups after "Choose"
+    expect(groupList.querySelectorAll("option")).toHaveLength(9);
+    // only the active configured codes, with their names
+    await waitFor(() =>
+      expect(productList.querySelectorAll("option")).toHaveLength(2),
+    );
+    expect(productList).toHaveTextContent("E0291 · Red cells");
+
+    const scan = screen.getByLabelText(
+      messages["bloodbank.receive.scan.label"],
+    );
+    fireEvent.change(scan, { target: { value: "=%6200" } });
+    fireEvent.keyDown(scan, { key: "Enter" });
+
+    await waitFor(() => expect(groupList).toHaveValue("A POS"));
+    expect(productList).toHaveValue("E0291");
+    expect(
+      screen.getByLabelText(messages["bloodbank.receive.productSuffix"]),
+    ).toHaveValue("V01");
+
+    fireEvent.change(
+      screen.getByLabelText(messages["bloodbank.field.expiresAt"]),
+      {
+        target: { value: "2026-11-27T03:01" },
+      },
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: messages["bloodbank.receive.addLine"],
+      }),
+    );
+
+    const table = screen.getByTestId("bb-receive-lines");
+    expect(table).toHaveTextContent("E0291V01");
+    expect(table).toHaveTextContent("A RhD pos");
+    expect(table).toHaveTextContent("11/27/2026");
+    expect(table).not.toHaveTextContent("T03:01");
+  });
+
+  it("the scan hint does not tell the user to press Enter", () => {
+    renderPage(BloodBankReceivePage);
+    expect(
+      screen.getByText(messages["bloodbank.receive.scan.helper"]),
+    ).toBeInTheDocument();
+    expect(messages["bloodbank.receive.scan.helper"]).not.toMatch(/Enter/);
+  });
+
+  it("a refused line names the missing fields by their labels", () => {
+    const intl = createIntl({ locale: "en", messages });
+    expect(
+      lineErrorsText(intl, [
+        { code: "bloodbank.receive.error.missingField", args: ["productCode"] },
+        { code: "bloodbank.receive.error.missingField", args: ["bloodGroup"] },
+        { code: "bloodbank.receive.error.missingField", args: ["expiresAt"] },
+      ]),
+    ).toBe("Missing: Product code, Blood group, Expires");
+    expect(
+      lineErrorsText(intl, [
+        {
+          code: "bloodbank.receive.error.groupConflict",
+          args: ["X999926100002", "O", "NEG"],
+        },
+      ]),
+    ).toBe("Donation X999926100002 already received as O RhD neg");
+  });
+
+  it("stock shows 25 units a page", async () => {
+    BloodBankService.listUnits.mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) =>
+        unit({
+          id: 100 + i,
+          donationNumber: `W00002600${String(100 + i)}`,
+        }),
+      ),
+    );
+    renderPage(BloodBankStockPage);
+
+    expect(await screen.findByText("W00002600100")).toBeInTheDocument();
+    expect(screen.getAllByText(/^W00002600\d{3}$/)).toHaveLength(25);
+    expect(screen.queryByText("W00002600125")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /next page/i }));
+
+    expect(await screen.findByText("W00002600125")).toBeInTheDocument();
+    expect(screen.getAllByText(/^W00002600\d{3}$/)).toHaveLength(5);
+  });
+
+  it("the return action says what a return will do at this time", async () => {
+    const minutesAgo = (minutes) =>
+      new Date(Date.now() - (minutes * 60 + 10) * 1000).toISOString();
+    BloodBankService.listUnits.mockResolvedValue([
+      unit({
+        id: 7,
+        donationNumber: "G123498654327",
+        status: "ISSUED",
+        issuedAt: minutesAgo(107),
+        returnWindowMinutes: 30,
+      }),
+      unit({
+        id: 8,
+        donationNumber: "G123498654328",
+        status: "ISSUED",
+        issuedAt: minutesAgo(5),
+        returnWindowMinutes: 30,
+      }),
+    ]);
+    renderPage(BloodBankStockPage);
+    await screen.findByText("G123498654327");
+    const menus = () =>
+      screen.getAllByRole("button", {
+        name: messages["bloodbank.action.menu"],
+      });
+
+    fireEvent.click(menus()[0]);
+    fireEvent.click(
+      await screen.findByText("Return and discard (past the 30 min window)"),
+    );
+    expect(
+      await screen.findByText("Return and discard unit G123498654327"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Unit G123498654327 was issued 1 h 47 min ago: it will be discarded (return window 30 min).",
+      ),
+    ).toBeInTheDocument();
+    // the button says it too (Carbon keeps the closing modal out of the
+    // accessibility tree in jsdom, so look for its text)
+    expect(
+      screen.getByText(messages["bloodbank.return.submitLate"], {
+        selector: "button",
+      }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(menus()[1]);
+    expect(
+      await screen.findByText(messages["bloodbank.action.return"]),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Return and discard (past the 30 min window)"),
+    ).toBeNull();
+  });
+
+  it("the trail is not shut in a scroll box of its own", async () => {
+    BloodBankService.trace.mockResolvedValue([
+      {
+        id: 10,
+        unitId: 1,
+        donationNumber: "G123498654321",
+        eventType: "ISSUED",
+        occurredAt: "2026-11-01T10:00:00Z",
+        details: "checks: UNIT_STATUS=PASS, EXPIRY=PASS; secondCheck: REQUIRED",
+      },
+    ]);
+    renderPage(BloodBankTracePage, "/bloodbank/trace?unit=1");
+    const trail = await screen.findByTestId("bb-trail");
+    expect(trail.closest(".bb-trail-container")).not.toBeNull();
   });
 });

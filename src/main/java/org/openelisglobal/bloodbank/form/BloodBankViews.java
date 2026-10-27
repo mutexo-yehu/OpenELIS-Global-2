@@ -29,14 +29,33 @@ public final class BloodBankViews {
     }
 
     /**
-     * @param expired      expiry has passed
-     * @param expiringSoon expires within the configured warning hours, not yet
-     *                     expired
+     * @param expired             expiry has passed
+     * @param expiringSoon        expires within the configured warning hours, not
+     *                            yet expired
+     * @param issuedAt            when an ISSUED unit was issued; null otherwise
+     * @param returnWindowMinutes the return window for an ISSUED unit, so the
+     *                            screen can say whether a return goes back to
+     *                            stock; null otherwise. The return itself decides.
      */
     public record UnitView(Long id, String fhirUuid, String donationNumber, String productCode,
             ProductTypeView productType, Abo abo, RhD rhd, String expiresAt, String collectedAt, String supplier,
             Integer volumeMl, UnitStatus status, String receivedAt, Integer receivedBy, Long patientId, boolean expired,
-            boolean expiringSoon) {
+            boolean expiringSoon, String issuedAt, Integer returnWindowMinutes) {
+
+        public UnitView(Long id, String fhirUuid, String donationNumber, String productCode,
+                ProductTypeView productType, Abo abo, RhD rhd, String expiresAt, String collectedAt, String supplier,
+                Integer volumeMl, UnitStatus status, String receivedAt, Integer receivedBy, Long patientId,
+                boolean expired, boolean expiringSoon) {
+            this(id, fhirUuid, donationNumber, productCode, productType, abo, rhd, expiresAt, collectedAt, supplier,
+                    volumeMl, status, receivedAt, receivedBy, patientId, expired, expiringSoon, null, null);
+        }
+
+        /** The same unit, with when it was issued and the return window. */
+        public UnitView withIssue(String issued, Integer windowMinutes) {
+            return new UnitView(id, fhirUuid, donationNumber, productCode, productType, abo, rhd, expiresAt,
+                    collectedAt, supplier, volumeMl, status, receivedAt, receivedBy, patientId, expired, expiringSoon,
+                    issued, windowMinutes);
+        }
     }
 
     public record ReservationView(Long id, Long unitId, Long patientId, Long crossmatchResultId,

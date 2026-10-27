@@ -87,8 +87,10 @@ const IssueChecks = ({ parsed }) => {
       : null;
   return (
     <span className="bb-trail-details">
+      {/* autoAlign floats the list above the page, so no table edge clips it */}
       <DefinitionTooltip
         openOnHover
+        autoAlign
         align="bottom-left"
         definition={
           <ul data-testid="bb-trail-check-list">
@@ -142,7 +144,7 @@ export const TrailTable = ({ events }) => {
   const intl = useIntl();
   const t = (id) => intl.formatMessage({ id });
   return (
-    <TableContainer>
+    <TableContainer className="bb-trail-container">
       <Table size="md" data-testid="bb-trail">
         <TableHead>
           <TableRow>

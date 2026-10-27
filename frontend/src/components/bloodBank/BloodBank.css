@@ -18,6 +18,12 @@
   min-width: 12rem;
 }
 
+/* a row of fields: top-aligned, so helper or "missing" text under one field
+   does not lift its input above the others (button rows keep flex-end) */
+.bb-row.bb-row--top {
+  align-items: flex-start;
+}
+
 .bb-tiles {
   display: flex;
   flex-wrap: wrap;
@@ -116,4 +122,14 @@
 
 .bb-trail-details {
   cursor: help;
+}
+
+/* the trail grows with the page: no inner scroll box to clip rows or the
+   check list (Carbon's table content scrolls sideways, which also clips) */
+.bb-trail-container .cds--data-table-content {
+  overflow: visible;
+}
+
+.bb-trail-container td {
+  vertical-align: top;
 }

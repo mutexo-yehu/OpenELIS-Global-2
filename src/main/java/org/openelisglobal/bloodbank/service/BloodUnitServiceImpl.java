@@ -53,6 +53,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class BloodUnitServiceImpl implements BloodUnitService {
 
     static final String ERR_DUPLICATE = "bloodbank.receive.error.duplicate";
+    static final String ERR_GROUP_CONFLICT = "bloodbank.receive.error.groupConflict";
     static final String ERR_EXPIRED = "bloodbank.receive.error.expired";
     static final String ERR_UNKNOWN_PRODUCT = "bloodbank.receive.error.unknownProductCode";
     static final String ERR_MISSING = "bloodbank.receive.error.missingField";
@@ -126,11 +127,34 @@ public class BloodUnitServiceImpl implements BloodUnitService {
         Integer user = userId(sysUserId);
         Instant now = clock.instant();
         Set<String> seenInBatch = new HashSet<>();
+        Map<String, BloodGroup> groupsInBatch = new HashMap<>();
         List<ReceiveLineResult> results = new ArrayList<>();
         for (int i = 0; i < lines.size(); i++) {
-            results.add(receiveLine(i, lines.get(i), user, now, seenInBatch));
+            results.add(receiveLine(i, lines.get(i), user, now, seenInBatch, groupsInBatch));
         }
         return results;
+    }
+
+    /**
+     * Every product of one donation carries the donor's group: a donation number
+     * already received (in any status, with any product code) or received earlier
+     * in this delivery with another ABO or RhD is refused. Splits and other
+     * products of the same donation with the same group stay allowed.
+     *
+     * @param inBatch the group this donation was received with earlier in this
+     *                delivery, or null
+     */
+    private LineError groupConflict(String din, Abo abo, RhD rhd, BloodGroup inBatch) {
+        if (inBatch != null && (inBatch.abo() != abo || inBatch.rhd() != rhd)) {
+            return new LineError(ERR_GROUP_CONFLICT, List.of(din, inBatch.abo().name(), inBatch.rhd().name()));
+        }
+        for (BloodUnit other : unitDAO.getByDonationNumber(din)) {
+            if (other.getAbo() != abo || other.getRhd() != rhd) {
+                return new LineError(ERR_GROUP_CONFLICT,
+                        List.of(din, String.valueOf(other.getAbo()), String.valueOf(other.getRhd())));
+            }
+        }
+        return null;
     }
 
     /**
@@ -138,7 +162,7 @@ public class BloodUnitServiceImpl implements BloodUnitService {
      * line.
      */
     private ReceiveLineResult receiveLine(int index, ReceiveLine line, Integer user, Instant now,
-            Set<String> seenInBatch) {
+            Set<String> seenInBatch, Map<String, BloodGroup> groupsInBatch) {
         List<LineError> errors = new ArrayList<>();
         if (line == null) {
             return new ReceiveLineResult(index, false, null, null, null,
@@ -216,6 +240,12 @@ public class BloodUnitServiceImpl implements BloodUnitService {
                 errors.add(new LineError(ERR_DUPLICATE, List.of(din, productCode)));
             }
         }
+        if (din != null && abo != null && rhd != null) {
+            LineError conflict = groupConflict(din, abo, rhd, groupsInBatch.get(din));
+            if (conflict != null) {
+                errors.add(conflict);
+            }
+        }
         if (!errors.isEmpty()) {
             return new ReceiveLineResult(index, false, null, din, productCode, errors);
         }
@@ -235,6 +265,7 @@ public class BloodUnitServiceImpl implements BloodUnitService {
         unit.setReceivedBy(user);
         unit.setSysUserId(String.valueOf(user));
         unitDAO.insert(unit);
+        groupsInBatch.putIfAbsent(din, new BloodGroup(abo, rhd));
         trail.record(unit, EventType.RECEIVED, user, now, new Entry(null, null, null, null, null, null,
                 unit.getSupplier() == null ? null : "supplier: " + unit.getSupplier()));
         return new ReceiveLineResult(index, true, unit.getId(), din, productCode, List.of());
@@ -250,10 +281,24 @@ public class BloodUnitServiceImpl implements BloodUnitService {
         Instant now = clock.instant();
         Timestamp before = expiringWithinHours == null ? null
                 : Timestamp.from(now.plus(Duration.ofHours(expiringWithinHours)));
-        int warnHours = settingsService.get().expiryWarnHours();
+        BloodBankSettings settings = settingsService.get();
+        int warnHours = settings.expiryWarnHours();
         return unitDAO.search(statuses, productTypeId, abo, rhd, before).stream()
                 .filter(u -> patientId == null || patientId.equals(u.getPatientId()))
-                .map(u -> BloodBankMapper.unit(u, now, warnHours)).toList();
+                .map(u -> withIssue(BloodBankMapper.unit(u, now, warnHours), settings.returnWindowMinutes())).toList();
+    }
+
+    /**
+     * An issued unit with its issue time and the return window, so the stock page
+     * can say what a return will do; the return itself still decides.
+     */
+    private UnitView withIssue(UnitView view, int returnWindowMinutes) {
+        if (view.status() != UnitStatus.ISSUED) {
+            return view;
+        }
+        String issuedAt = reservationDAO.getForUnit(view.id(), ReservationStatus.ISSUED)
+                .map(r -> BloodBankMapper.iso(r.getIssuedAt())).orElse(null);
+        return view.withIssue(issuedAt, returnWindowMinutes);
     }
 
     @Override

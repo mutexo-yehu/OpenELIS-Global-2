@@ -18,6 +18,7 @@ import { useIntl } from "react-intl";
 import { useHistory } from "react-router-dom";
 import SearchPatientForm from "../patient/SearchPatientForm";
 import BloodBankService from "./BloodBankService";
+import BloodBankPager, { PAGE_SIZES, usePage } from "./BloodBankPager";
 import IssueModal from "./IssueModal";
 import ReasonModal from "./ReasonModal";
 import ReserveModal from "./ReserveModal";
@@ -157,52 +158,67 @@ export const ProfilePanel = ({ profile }) => {
   );
 };
 
-const UnitTable = ({ units, renderActions, renderNotes, emptyKey }) => {
+// paged when the list is longer than one page; resetKey (a filter) goes back
+// to the first page
+const UnitTable = ({
+  units,
+  renderActions,
+  renderNotes,
+  emptyKey,
+  resetKey,
+  pagerId,
+}) => {
   const intl = useIntl();
   const t = (id) => intl.formatMessage({ id });
+  const paging = usePage(units, resetKey);
   return (
-    <TableContainer>
-      <Table size="md">
-        <TableHead>
-          <TableRow>
-            <TableHeader>{t("bloodbank.field.din")}</TableHeader>
-            <TableHeader>{t("bloodbank.field.product")}</TableHeader>
-            <TableHeader>{t("bloodbank.field.group")}</TableHeader>
-            <TableHeader>{t("bloodbank.field.expiresAt")}</TableHeader>
-            {renderNotes && (
-              <TableHeader>{t("bloodbank.candidates.checks")}</TableHeader>
-            )}
-            <TableHeader />
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {units.length === 0 && (
+    <>
+      <TableContainer>
+        <Table size="md">
+          <TableHead>
             <TableRow>
-              <TableCell colSpan={6}>{t(emptyKey)}</TableCell>
+              <TableHeader>{t("bloodbank.field.din")}</TableHeader>
+              <TableHeader>{t("bloodbank.field.product")}</TableHeader>
+              <TableHeader>{t("bloodbank.field.group")}</TableHeader>
+              <TableHeader>{t("bloodbank.field.expiresAt")}</TableHeader>
+              {renderNotes && (
+                <TableHeader>{t("bloodbank.candidates.checks")}</TableHeader>
+              )}
+              <TableHeader />
             </TableRow>
-          )}
-          {units.map((entry) => {
-            const unit = entry.unit || entry;
-            return (
-              <TableRow
-                key={unit.id}
-                className={entry.selectable === false ? "bb-disabled" : ""}
-              >
-                <TableCell>{unit.donationNumber}</TableCell>
-                <TableCell>{productText(unit)}</TableCell>
-                <TableCell>{groupText(intl, unit.abo, unit.rhd)}</TableCell>
-                <TableCell>
-                  {formatInstant(intl, unit.expiresAt)}{" "}
-                  <ExpiryTag unit={unit} />
-                </TableCell>
-                {renderNotes && <TableCell>{renderNotes(entry)}</TableCell>}
-                <TableCell>{renderActions(entry)}</TableCell>
+          </TableHead>
+          <TableBody>
+            {units.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={6}>{t(emptyKey)}</TableCell>
               </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-    </TableContainer>
+            )}
+            {paging.shown.map((entry) => {
+              const unit = entry.unit || entry;
+              return (
+                <TableRow
+                  key={unit.id}
+                  className={entry.selectable === false ? "bb-disabled" : ""}
+                >
+                  <TableCell>{unit.donationNumber}</TableCell>
+                  <TableCell>{productText(unit)}</TableCell>
+                  <TableCell>{groupText(intl, unit.abo, unit.rhd)}</TableCell>
+                  <TableCell>
+                    {formatInstant(intl, unit.expiresAt)}{" "}
+                    <ExpiryTag unit={unit} />
+                  </TableCell>
+                  {renderNotes && <TableCell>{renderNotes(entry)}</TableCell>}
+                  <TableCell>{renderActions(entry)}</TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+      {units.length > PAGE_SIZES[0] && (
+        <BloodBankPager id={pagerId} paging={paging} />
+      )}
+    </>
   );
 };
 
@@ -315,6 +331,7 @@ const BloodBankPatientIssue = () => {
         <UnitTable
           units={reserved}
           emptyKey="bloodbank.reserved.empty"
+          pagerId="bb-reserved-pages"
           renderActions={(unit) => (
             <>
               <Button
@@ -354,6 +371,8 @@ const BloodBankPatientIssue = () => {
         <UnitTable
           units={candidates}
           emptyKey="bloodbank.candidates.empty"
+          resetKey={productType}
+          pagerId="bb-candidates-pages"
           renderNotes={(entry) =>
             (entry.checks || [])
               .filter((c) => c.status !== "PASS")

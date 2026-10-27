@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Button,
   InlineNotification,
+  Select,
+  SelectItem,
   Table,
   TableBody,
   TableCell,
@@ -17,24 +19,56 @@ import { useIntl } from "react-intl";
 import BloodBankService from "./BloodBankService";
 import {
   errorText,
+  fieldLabel,
   formatInstant,
   groupText,
+  lineErrorsText,
   messageFor,
 } from "./bloodBankFormat";
 import "./BloodBank.css";
 
+// The eight ABO/RhD groups: a fixed list, sent as typed ("O NEG").
+export const BLOOD_GROUPS = ["O", "A", "B", "AB"].flatMap((abo) =>
+  ["NEG", "POS"].map((rhd) => ({ abo, rhd, value: `${abo} ${rhd}` })),
+);
+
+// An ISBT 128 product code is 8 characters: the 5-character product
+// description code, the donation type and a 2-character division (E0291V00).
+const PRODUCT_CODE_LENGTH = 8;
+const DEFAULT_SUFFIX = "V00";
+
 const EMPTY_MANUAL = {
   donationNumber: "",
-  productCode: "",
+  productPrefix: "",
+  productSuffix: DEFAULT_SUFFIX,
   bloodGroup: "",
   expiresAt: "",
   volumeMl: "",
 };
 
+// what a line needs before it can be added, from the form or the scans
+const REQUIRED = ["donationNumber", "productCode", "bloodGroup", "expiresAt"];
+
+/** The configured code that is the longest prefix of a scanned product code. */
+export const matchProductCode = (codes, productCode) =>
+  (codes || [])
+    .filter((c) => productCode && productCode.startsWith(c.isbtCodePrefix))
+    .sort((a, b) => b.isbtCodePrefix.length - a.isbtCodePrefix.length)[0];
+
+/** The product code chosen in the form: the code, then type and division. */
+const chosenProductCode = (manual) => {
+  if (!manual.productPrefix) return "";
+  if (manual.productPrefix.length >= PRODUCT_CODE_LENGTH) {
+    return manual.productPrefix;
+  }
+  return (manual.productPrefix + manual.productSuffix.trim()).toUpperCase();
+};
+
 /**
  * Receipt: scan each label barcode of a bag into the scan field (the server
- * parses them), or type the fields by hand; typed fields override scans. Lines
- * collect in a table and are sent together; each line gets its own result.
+ * parses them), or enter the fields by hand; entered fields override scans,
+ * and a group or product scan fills its list. Lines collect in a table and are
+ * sent together; each line gets its own result.
  */
 const BloodBankReceive = () => {
   const intl = useIntl();
@@ -43,6 +77,8 @@ const BloodBankReceive = () => {
   const [scans, setScans] = useState([]);
   const [parsed, setParsed] = useState(null);
   const [manual, setManual] = useState(EMPTY_MANUAL);
+  const [codes, setCodes] = useState([]);
+  const [missing, setMissing] = useState([]);
   const [supplier, setSupplier] = useState("");
   const [lines, setLines] = useState([]);
   const [results, setResults] = useState([]);
@@ -51,7 +87,35 @@ const BloodBankReceive = () => {
 
   useEffect(() => {
     scanRef.current?.focus();
+    BloodBankService.productCodes()
+      .then((list) =>
+        setCodes(
+          (list || [])
+            .filter((c) => c.active && c.productType?.active !== false)
+            .sort((a, b) => a.isbtCodePrefix.localeCompare(b.isbtCodePrefix)),
+        ),
+      )
+      .catch(() => setCodes([]));
   }, []);
+
+  const t = (id, values) => intl.formatMessage({ id }, values);
+
+  // a group or product scan fills its list; a code that is not configured
+  // leaves the list as it is (the scan still goes with the line and the server
+  // refuses it)
+  const fillFromScan = (label) => {
+    setManual((current) => {
+      const next = { ...current };
+      if (label.abo && label.rhd) next.bloodGroup = `${label.abo} ${label.rhd}`;
+      const code = matchProductCode(codes, label.productCode);
+      if (code) {
+        next.productPrefix = code.isbtCodePrefix;
+        next.productSuffix =
+          label.productCode.slice(code.isbtCodePrefix.length) || DEFAULT_SUFFIX;
+      }
+      return next;
+    });
+  };
 
   const addScan = () => {
     const value = scan.trim();
@@ -63,6 +127,8 @@ const BloodBankReceive = () => {
       .then((label) => {
         setScans(next);
         setParsed(label);
+        fillFromScan(label);
+        setMissing([]);
       })
       .catch((e) => setError(errorText(intl, e)));
   };
@@ -71,15 +137,47 @@ const BloodBankReceive = () => {
     setScans([]);
     setParsed(null);
     setManual(EMPTY_MANUAL);
+    setMissing([]);
     scanRef.current?.focus();
   };
 
   const draftHasContent =
-    scans.length > 0 || Object.values(manual).some((v) => v.trim() !== "");
+    scans.length > 0 ||
+    ["donationNumber", "productPrefix", "bloodGroup", "expiresAt", "volumeMl"]
+      .map((field) => manual[field])
+      .some((v) => v.trim() !== "");
+
+  // what the line will carry for each required field, from the form or the scans
+  const draftValue = {
+    donationNumber: manual.donationNumber.trim() || parsed?.donationNumber,
+    productCode: chosenProductCode(manual) || parsed?.productCode,
+    bloodGroup: manual.bloodGroup || (parsed?.abo && parsed?.rhd),
+    expiresAt: manual.expiresAt || parsed?.expiresAt,
+  };
 
   const addLine = () => {
-    setLines([...lines, { scans, ...manual, parsed }]);
+    const absent = REQUIRED.filter((field) => !draftValue[field]);
+    setMissing(absent);
+    if (absent.length) return;
+    setLines([
+      ...lines,
+      {
+        scans,
+        donationNumber: manual.donationNumber,
+        productCode: chosenProductCode(manual),
+        bloodGroup: manual.bloodGroup,
+        expiresAt: manual.expiresAt,
+        volumeMl: manual.volumeMl,
+        parsed,
+      },
+    ]);
     clearDraft();
+  };
+
+  // an entry clears its "missing" mark; the product list's field is productCode
+  const setField = (field, value, requiredField = field) => {
+    setManual({ ...manual, [field]: value });
+    setMissing(missing.filter((m) => m !== requiredField));
   };
 
   const submit = () => {
@@ -101,17 +199,34 @@ const BloodBankReceive = () => {
       });
   };
 
-  const t = (id, values) => intl.formatMessage({ id }, values);
+  const missingProps = (field) => ({
+    invalid: missing.includes(field),
+    invalidText: t("bloodbank.receive.missing.field"),
+  });
   const shown = (line, field) =>
     line[field] || (line.parsed && line.parsed[field]) || "";
-  const lineGroup = (line) =>
-    line.bloodGroup ||
-    (line.parsed && (line.parsed.abo || line.parsed.rhd)
+  const lineGroup = (line) => {
+    if (line.bloodGroup) {
+      const [abo, rhd] = line.bloodGroup.split(" ");
+      return groupText(intl, abo, rhd);
+    }
+    return line.parsed && (line.parsed.abo || line.parsed.rhd)
       ? groupText(intl, line.parsed.abo, line.parsed.rhd)
-      : "");
-  const lineExpiry = (line) =>
-    line.expiresAt ||
-    (line.parsed?.expiresAt ? formatInstant(intl, line.parsed.expiresAt) : "");
+      : "";
+  };
+  // a typed expiry is local time ("2026-11-27T03:01"), a scanned one an instant
+  const lineExpiry = (line) => {
+    if (line.expiresAt) return formatInstant(intl, new Date(line.expiresAt));
+    return line.parsed?.expiresAt
+      ? formatInstant(intl, line.parsed.expiresAt)
+      : "";
+  };
+  const selectedCode = codes.find(
+    (c) => c.isbtCodePrefix === manual.productPrefix,
+  );
+  const suffixLength = selectedCode
+    ? PRODUCT_CODE_LENGTH - selectedCode.isbtCodePrefix.length
+    : 0;
 
   return (
     <div>
@@ -155,49 +270,90 @@ const BloodBankReceive = () => {
           </div>
         )}
         <h5 className="bb-section">{t("bloodbank.receive.manual.title")}</h5>
-        <div className="bb-row">
+        <div className="bb-row bb-row--top" data-testid="bb-receive-fields">
           <TextInput
             id="bb-din"
             labelText={t("bloodbank.field.din")}
             value={manual.donationNumber}
-            onChange={(e) =>
-              setManual({ ...manual, donationNumber: e.target.value })
-            }
+            autoComplete="off"
+            {...missingProps("donationNumber")}
+            onChange={(e) => setField("donationNumber", e.target.value)}
           />
-          <TextInput
+          <Select
             id="bb-product-code"
             labelText={t("bloodbank.field.productCode")}
-            value={manual.productCode}
+            value={manual.productPrefix}
+            {...missingProps("productCode")}
             onChange={(e) =>
-              setManual({ ...manual, productCode: e.target.value })
+              setField("productPrefix", e.target.value, "productCode")
             }
-          />
-          <TextInput
+          >
+            <SelectItem value="" text={t("bloodbank.receive.choose")} />
+            {codes.map((c) => (
+              <SelectItem
+                key={c.id}
+                value={c.isbtCodePrefix}
+                text={[c.isbtCodePrefix, c.productType?.name]
+                  .filter(Boolean)
+                  .join(" · ")}
+              />
+            ))}
+          </Select>
+          {suffixLength > 0 && (
+            <TextInput
+              id="bb-product-suffix"
+              labelText={t("bloodbank.receive.productSuffix")}
+              value={manual.productSuffix}
+              maxLength={suffixLength}
+              autoComplete="off"
+              onChange={(e) =>
+                setField("productSuffix", e.target.value, "productCode")
+              }
+            />
+          )}
+          <Select
             id="bb-group"
             labelText={t("bloodbank.field.group")}
-            helperText={t("bloodbank.receive.group.helper")}
             value={manual.bloodGroup}
-            onChange={(e) =>
-              setManual({ ...manual, bloodGroup: e.target.value })
-            }
-          />
+            {...missingProps("bloodGroup")}
+            onChange={(e) => setField("bloodGroup", e.target.value)}
+          >
+            <SelectItem value="" text={t("bloodbank.receive.choose")} />
+            {BLOOD_GROUPS.map((g) => (
+              <SelectItem
+                key={g.value}
+                value={g.value}
+                text={groupText(intl, g.abo, g.rhd)}
+              />
+            ))}
+          </Select>
           <TextInput
             id="bb-expires"
             type="datetime-local"
             labelText={t("bloodbank.field.expiresAt")}
             value={manual.expiresAt}
-            onChange={(e) =>
-              setManual({ ...manual, expiresAt: e.target.value })
-            }
+            {...missingProps("expiresAt")}
+            onChange={(e) => setField("expiresAt", e.target.value)}
           />
           <TextInput
             id="bb-volume"
             type="number"
             labelText={t("bloodbank.field.volumeMl")}
             value={manual.volumeMl}
-            onChange={(e) => setManual({ ...manual, volumeMl: e.target.value })}
+            onChange={(e) => setField("volumeMl", e.target.value)}
           />
         </div>
+        {missing.length > 0 && (
+          <InlineNotification
+            kind="warning"
+            lowContrast
+            hideCloseButton
+            title=""
+            subtitle={t("bloodbank.receive.missing", {
+              fields: missing.map((f) => fieldLabel(intl, f)).join(", "),
+            })}
+          />
+        )}
         <div className="bb-row">
           <Button kind="primary" disabled={!draftHasContent} onClick={addLine}>
             {t("bloodbank.receive.addLine")}
@@ -230,9 +386,7 @@ const BloodBankReceive = () => {
                 })
               : t("bloodbank.receive.line.refused", { index: r.index + 1 })
           }
-          subtitle={(r.errors || [])
-            .map((e) => messageFor(intl, e.code, e.args))
-            .join("; ")}
+          subtitle={lineErrorsText(intl, r.errors)}
           onClose={() => setResults(results.filter((x) => x !== r))}
         />
       ))}
@@ -240,7 +394,7 @@ const BloodBankReceive = () => {
       <div className="bb-section">
         <h4>{t("bloodbank.receive.pending.title")}</h4>
         <TableContainer>
-          <Table size="md">
+          <Table size="md" data-testid="bb-receive-lines">
             <TableHead>
               <TableRow>
                 <TableHeader>#</TableHeader>

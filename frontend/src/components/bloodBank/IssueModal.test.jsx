@@ -285,6 +285,61 @@ describe("IssueModal", () => {
     await waitFor(() => expect(onIssued).toHaveBeenCalled());
   });
 
+  it("keeps the browser from filling in the second checker's sign-in", async () => {
+    BloodBankService.issueCheck.mockResolvedValue({
+      unitId: 5,
+      allowed: true,
+      warningReasonRequired: false,
+      checks: checksWith(pass("RHD")),
+    });
+    renderModal();
+
+    await scanAndCheck();
+
+    expect(
+      screen.getByLabelText(messages["bloodbank.issueModal.secondLogin"]),
+    ).toHaveAttribute("autocomplete", "off");
+    expect(
+      screen.getByLabelText(messages["bloodbank.issueModal.secondPassword"]),
+    ).toHaveAttribute("autocomplete", "new-password");
+    expect(
+      screen.getByLabelText(messages["bloodbank.issueModal.secondOtp"]),
+    ).toHaveAttribute("autocomplete", "one-time-code");
+  });
+
+  it("explains a refused sign-in, naming the authenticator code", async () => {
+    BloodBankService.issueCheck.mockResolvedValue({
+      unitId: 5,
+      allowed: true,
+      warningReasonRequired: false,
+      checks: checksWith(pass("RHD")),
+    });
+    const refused = new Error("refused");
+    refused.errorCode = "bloodbank.issue.error.checksFailed";
+    refused.params = [];
+    refused.checks = checksWith(pass("RHD")).map((c) =>
+      c.code === "SECOND_PERSON"
+        ? {
+            ...c,
+            status: "FAIL",
+            messageKey: "bloodbank.check.secondPerson.invalid",
+          }
+        : c,
+    );
+    BloodBankService.issue.mockRejectedValue(refused);
+    renderModal();
+
+    await scanAndCheck();
+    fillCollectionAndSecondCheck();
+    fireEvent.click(issueButton());
+
+    expect(
+      await screen.findByText(
+        /^Login, password or authenticator code not accepted\. .*every 30 seconds\)\.$/,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("still needs the second sign-in when it is required", async () => {
     BloodBankService.issueCheck.mockResolvedValue({
       unitId: 5,

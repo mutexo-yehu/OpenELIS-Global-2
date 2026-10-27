@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import org.junit.Before;
@@ -69,7 +70,7 @@ public class BloodTraceServiceImplTest {
                 "line one\nline two");
 
         String csv = service.toCsv(List.of(event));
-        String[] lines = csv.split("\r\n", -1);
+        String[] lines = csv.substring(BloodTraceServiceImpl.BOM.length()).split("\r\n", -1);
 
         assertEquals("occurredAtUtc,eventType,donationNumber,productCode,unitId,patientId,patientName,"
                 + "patientNationalId,labNumber,reservationId,performedBy,secondChecker,location,collectorName,reason,"
@@ -78,6 +79,35 @@ public class BloodTraceServiceImplTest {
                 + "Ward 3,Porter,\"'=HYPERLINK(\"\"x\"\")\",\"line one\nline two\"", lines[1]);
         String named = service.toCsv(List.of(event.withPatient("Jo Example", "NID-1", "26-000123")));
         assertTrue(named, named.split("\r\n")[1].contains(",501,Jo Example,NID-1,26-000123,70,"));
+    }
+
+    @Test
+    public void csvStartsWithAByteOrderMarkSoSpreadsheetsReadAccents() {
+        EventView event = new EventView(1L, 2L, "G123498654321", "E0291V00", EventType.RECEIVED, null, null, 10,
+                "Ren\u00e9e Example", null, null, "2026-10-27T14:00:00Z", null, null, null, null);
+
+        String csv = service.toCsv(List.of(event));
+
+        assertTrue(csv.startsWith("\uFEFFoccurredAtUtc,"));
+        assertTrue(csv, csv.contains(",Ren\u00e9e Example,"));
+        assertEquals(1, csv.chars().filter(c -> c == '\uFEFF').count());
+    }
+
+    @Test
+    public void csvDetailsGiveTimesInLocalTimeWithTheOffsetAndOccurredAtStaysUtc() {
+        service.setZone(ZoneOffset.ofHours(-4));
+        EventView event = new EventView(1L, 2L, "G123498654321", "E0291V00", EventType.RESERVED, 501L, 70L, 10,
+                "Jo Example", null, null, "2026-10-27T14:00:00Z", null, null, null,
+                "crossmatch result 900 (26-000123), valid until 2026-10-30T03:55:00Z");
+
+        String row = service.toCsv(List.of(event)).split("\r\n")[1];
+
+        assertTrue(row, row.startsWith("2026-10-27T14:00:00Z,RESERVED,"));
+        assertTrue(row, row.endsWith(",\"crossmatch result 900 (26-000123), valid until 2026-10-29 23:55 UTC-04:00\""));
+        assertEquals("no time here", BloodTraceServiceImpl.localTimes("no time here", ZoneOffset.UTC));
+        assertEquals("at 2026-10-30 03:55 UTC+00:00",
+                BloodTraceServiceImpl.localTimes("at 2026-10-30T03:55Z", ZoneOffset.UTC));
+        assertNull(BloodTraceServiceImpl.localTimes(null, ZoneOffset.UTC));
     }
 
     @Test

@@ -1,10 +1,16 @@
 package org.openelisglobal.bloodbank.service;
 
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.openelisglobal.bloodbank.dao.BloodProfileResultDAO;
@@ -27,10 +33,28 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class BloodTraceServiceImpl implements BloodTraceService {
 
-    /** Times are written as ISO 8601 instants in UTC, as the header says. */
+    /**
+     * occurredAtUtc is an ISO 8601 instant in UTC, as its name says; times inside
+     * details are local, with their offset.
+     */
     private static final String[] HEADER = { "occurredAtUtc", "eventType", "donationNumber", "productCode", "unitId",
             "patientId", "patientName", "patientNationalId", "labNumber", "reservationId", "performedBy",
             "secondChecker", "location", "collectorName", "reason", "details" };
+
+    /** UTF-8 byte-order mark: spreadsheets then read the file as UTF-8. */
+    static final String BOM = "\uFEFF";
+
+    private static final Pattern ISO_INSTANT_IN_TEXT = Pattern
+            .compile("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?Z");
+
+    private static final DateTimeFormatter LOCAL_WITH_OFFSET = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'xxx");
+
+    /** The lab's zone: the server's, as receipt reads typed times in it. */
+    private ZoneId zone = ZoneId.systemDefault();
+
+    void setZone(ZoneId zone) {
+        this.zone = zone;
+    }
 
     @Autowired
     private BloodUnitDAO unitDAO;
@@ -75,14 +99,19 @@ public class BloodTraceServiceImpl implements BloodTraceService {
         return views(eventDAO.getByPatient(patientId));
     }
 
+    /**
+     * Starts with a UTF-8 byte-order mark, so a spreadsheet reads accented names
+     * correctly. Times inside the details text are written in the lab's local time
+     * with its UTC offset; the occurredAtUtc column stays in UTC.
+     */
     @Override
     public String toCsv(List<EventView> events) {
-        StringBuilder csv = new StringBuilder(String.join(",", HEADER)).append("\r\n");
+        StringBuilder csv = new StringBuilder(BOM).append(String.join(",", HEADER)).append("\r\n");
         for (EventView e : events) {
             String[] cells = { e.occurredAt(), String.valueOf(e.eventType()), e.donationNumber(), e.productCode(),
                     str(e.unitId()), str(e.patientId()), e.patientName(), e.patientNationalId(), e.labNumber(),
                     str(e.reservationId()), e.performedByName(), e.secondCheckerName(), e.location(), e.collectorName(),
-                    e.reason(), e.details() };
+                    e.reason(), localTimes(e.details(), zone) };
             for (int i = 0; i < cells.length; i++) {
                 if (i > 0) {
                     csv.append(',');
@@ -131,6 +160,29 @@ public class BloodTraceServiceImpl implements BloodTraceService {
         // computeIfAbsent keeps no null: an empty string stands for "none"
         String lab = resultId == null ? null : profileResultDAO.getAccessionForResult(String.valueOf(resultId));
         return lab == null ? "" : lab;
+    }
+
+    /**
+     * Each UTC instant in the text ({@code 2026-10-30T03:55:00Z}) as local time
+     * with the offset (at UTC-4: {@code 2026-10-29 23:55 UTC-04:00}).
+     */
+    static String localTimes(String text, ZoneId zone) {
+        if (text == null) {
+            return null;
+        }
+        Matcher matcher = ISO_INSTANT_IN_TEXT.matcher(text);
+        StringBuilder out = new StringBuilder();
+        while (matcher.find()) {
+            String local;
+            try {
+                local = OffsetDateTime.parse(matcher.group()).atZoneSameInstant(zone).format(LOCAL_WITH_OFFSET);
+            } catch (DateTimeParseException e) {
+                local = matcher.group();
+            }
+            matcher.appendReplacement(out, Matcher.quoteReplacement(local));
+        }
+        matcher.appendTail(out);
+        return out.toString();
     }
 
     private static String str(Object value) {

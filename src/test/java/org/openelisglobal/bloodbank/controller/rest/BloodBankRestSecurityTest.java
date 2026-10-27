@@ -88,12 +88,13 @@ public class BloodBankRestSecurityTest extends SecuritySliceMockMvcTest {
             get("/rest/bloodbank/patients/501/profile"), get("/rest/bloodbank/patients/501/candidate-units"),
             get("/rest/bloodbank/patients/501/trace"), get("/rest/bloodbank/trace?unit=5"),
             get("/rest/bloodbank/trace/export?patient=501"), get("/rest/bloodbank/product-types"),
-            post("/rest/bloodbank/units/parse"), post("/rest/bloodbank/units/receive"),
-            post("/rest/bloodbank/units/5/quarantine"), post("/rest/bloodbank/units/5/discard"),
-            post("/rest/bloodbank/units/5/return-to-supplier"), post("/rest/bloodbank/units/5/issue/check"),
-            post("/rest/bloodbank/units/5/issue"), post("/rest/bloodbank/units/5/return"),
-            post("/rest/bloodbank/units/5/transfused"), post("/rest/bloodbank/reservations"),
-            post("/rest/bloodbank/reservations/70/release"));
+            // the receipt screen lists the configured product codes
+            get("/rest/bloodbank/product-codes"), post("/rest/bloodbank/units/parse"),
+            post("/rest/bloodbank/units/receive"), post("/rest/bloodbank/units/5/quarantine"),
+            post("/rest/bloodbank/units/5/discard"), post("/rest/bloodbank/units/5/return-to-supplier"),
+            post("/rest/bloodbank/units/5/issue/check"), post("/rest/bloodbank/units/5/issue"),
+            post("/rest/bloodbank/units/5/return"), post("/rest/bloodbank/units/5/transfused"),
+            post("/rest/bloodbank/reservations"), post("/rest/bloodbank/reservations/70/release"));
 
     /** SUPERVISOR: VALIDATION and ADMIN. */
     private static final List<Endpoint> SUPERVISOR = List.of(post("/rest/bloodbank/units/5/release"));
@@ -101,8 +102,8 @@ public class BloodBankRestSecurityTest extends SecuritySliceMockMvcTest {
     /** ADMIN only. */
     private static final List<Endpoint> ADMIN = List.of(get("/rest/bloodbank/settings"),
             put("/rest/bloodbank/settings"), post("/rest/bloodbank/product-types"),
-            put("/rest/bloodbank/product-types/1"), get("/rest/bloodbank/product-codes"),
-            post("/rest/bloodbank/product-codes"), put("/rest/bloodbank/product-codes/1"));
+            put("/rest/bloodbank/product-types/1"), post("/rest/bloodbank/product-codes"),
+            put("/rest/bloodbank/product-codes/1"));
 
     @Autowired
     private BloodUnitService unitService;

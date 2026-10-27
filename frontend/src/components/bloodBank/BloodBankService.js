@@ -116,6 +116,7 @@ const BloodBankService = {
   summary: () => get("/units/summary"),
   unitDetail: (unitId) => get(`/units/${unitId}`),
   productTypes: () => get("/product-types"),
+  productCodes: () => get("/product-codes"),
   unitAction: (unitId, action, reason) =>
     post(`/units/${unitId}/${UNIT_ACTIONS[action]}`, compact({ reason })),
 

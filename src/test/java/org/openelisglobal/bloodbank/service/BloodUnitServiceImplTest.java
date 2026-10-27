@@ -162,6 +162,77 @@ public class BloodUnitServiceImplTest {
         assertEquals(DIN, saved.getValue().getDonationNumber());
     }
 
+    private BloodUnit received(String productCode, Abo abo, RhD rhd) {
+        BloodUnit unit = new BloodUnit();
+        unit.setId(2L);
+        unit.setDonationNumber(DIN);
+        unit.setProductCode(productCode);
+        unit.setProductType(redCells);
+        unit.setAbo(abo);
+        unit.setRhd(rhd);
+        unit.setStatus(UnitStatus.AVAILABLE);
+        return unit;
+    }
+
+    @Test
+    public void aDonationAlreadyReceivedWithAnotherGroupIsRefusedWhateverTheProductCode() {
+        // the owner's retest: V00 in stock as O NEG, the V01 split typed as A POS
+        String split = "E0291V01";
+        when(catalogService.resolve(split)).thenReturn(Optional.of(redCells));
+        when(unitDAO.getByDonationNumberAndProductCode(DIN, split)).thenReturn(Optional.empty());
+        when(unitDAO.getByDonationNumber(DIN)).thenReturn(List.of(received(CODE, Abo.O, RhD.NEG)));
+
+        List<ReceiveLineResult> results = service.receive(
+                List.of(typed(DIN, split, "A POS", "2026-11-30"), typed(DIN, split, "O POS", "2026-11-30")), USER);
+
+        assertEquals(List.of(false, false), results.stream().map(ReceiveLineResult::received).toList());
+        assertEquals(List.of(BloodUnitServiceImpl.ERR_GROUP_CONFLICT), codes(results.get(0)));
+        assertEquals(List.of(DIN, "O", "NEG"), results.get(0).errors().get(0).args());
+        // RhD alone differing is refused too
+        assertTrue(codes(results.get(1)).contains(BloodUnitServiceImpl.ERR_GROUP_CONFLICT));
+        verify(unitDAO, never()).insert(ArgumentCaptor.forClass(BloodUnit.class).capture());
+    }
+
+    @Test
+    public void anotherProductOfTheSameDonationWithTheSameGroupIsReceived() {
+        String plasma = "E0869V00";
+        when(catalogService.resolve(plasma)).thenReturn(Optional.of(redCells));
+        when(unitDAO.getByDonationNumberAndProductCode(DIN, plasma)).thenReturn(Optional.empty());
+        when(unitDAO.getByDonationNumber(DIN)).thenReturn(List.of(received(CODE, Abo.O, RhD.NEG)));
+
+        List<ReceiveLineResult> results = service.receive(List.of(typed(DIN, plasma, "O NEG", "2026-11-30")), USER);
+
+        assertTrue(results.get(0).received());
+        verify(unitDAO).insert(argThat(u -> plasma.equals(u.getProductCode()) && u.getAbo() == Abo.O));
+    }
+
+    @Test
+    public void theSameDonationAndProductWithTheSameGroupIsStillADuplicate() {
+        when(unitDAO.getByDonationNumberAndProductCode(DIN, CODE))
+                .thenReturn(Optional.of(received(CODE, Abo.O, RhD.NEG)));
+        when(unitDAO.getByDonationNumber(DIN)).thenReturn(List.of(received(CODE, Abo.O, RhD.NEG)));
+
+        List<ReceiveLineResult> results = service.receive(List.of(typed(DIN, CODE, "O NEG", "2026-11-30")), USER);
+
+        assertEquals(List.of(BloodUnitServiceImpl.ERR_DUPLICATE), codes(results.get(0)));
+        verify(unitDAO, never()).insert(ArgumentCaptor.forClass(BloodUnit.class).capture());
+    }
+
+    @Test
+    public void twoProductsOfOneDonationInOneDeliveryMustShareTheGroup() {
+        String split = "E0291V01";
+        when(catalogService.resolve(split)).thenReturn(Optional.of(redCells));
+        when(unitDAO.getByDonationNumberAndProductCode(DIN, CODE)).thenReturn(Optional.empty());
+        when(unitDAO.getByDonationNumberAndProductCode(DIN, split)).thenReturn(Optional.empty());
+
+        List<ReceiveLineResult> results = service.receive(
+                List.of(typed(DIN, CODE, "O NEG", "2026-11-30"), typed(DIN, split, "B POS", "2026-11-30")), USER);
+
+        assertTrue(results.get(0).received());
+        assertEquals(List.of(BloodUnitServiceImpl.ERR_GROUP_CONFLICT), codes(results.get(1)));
+        assertEquals(List.of(DIN, "O", "NEG"), results.get(1).errors().get(0).args());
+    }
+
     @Test
     public void aUnitExpiringAMinuteFromNowIsStillReceived() {
         when(unitDAO.getByDonationNumberAndProductCode(DIN, CODE)).thenReturn(Optional.empty());
@@ -305,6 +376,31 @@ public class BloodUnitServiceImplTest {
         assertEquals(2, all.size());
         assertFalse(all.get(0).expiringSoon());
         assertTrue(all.get(1).expiringSoon());
+    }
+
+    @Test
+    public void anIssuedUnitCarriesItsIssueTimeAndTheReturnWindow() {
+        BloodUnit issued = stocked(UnitStatus.ISSUED);
+        BloodUnit available = stocked(UnitStatus.AVAILABLE);
+        available.setId(6L);
+        BloodUnitReservation reservation = new BloodUnitReservation();
+        reservation.setUnit(issued);
+        reservation.setStatus(ReservationStatus.ISSUED);
+        reservation.setIssuedAt(Timestamp.from(NOW.minus(Duration.ofMinutes(107))));
+        when(unitDAO.search(List.of(UnitStatus.ISSUED, UnitStatus.AVAILABLE), null, null, null, null))
+                .thenReturn(List.of(issued, available));
+        when(reservationDAO.getForUnit(5L, ReservationStatus.ISSUED)).thenReturn(Optional.of(reservation));
+
+        List<UnitView> views = service.search(List.of(UnitStatus.ISSUED, UnitStatus.AVAILABLE), null, null, null, null,
+                null);
+
+        assertEquals("2026-10-27T12:13:00Z", views.get(0).issuedAt());
+        assertEquals(Integer.valueOf(BloodBankSettings.DEFAULTS.returnWindowMinutes()),
+                views.get(0).returnWindowMinutes());
+        // only issued units are looked up, and only they carry the window
+        assertEquals(null, views.get(1).issuedAt());
+        assertEquals(null, views.get(1).returnWindowMinutes());
+        verify(reservationDAO, never()).getForUnit(6L, ReservationStatus.ISSUED);
     }
 
     @Test

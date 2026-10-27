@@ -431,6 +431,33 @@ public class BloodBankDatabaseIntegrationTest extends BaseWebContextSensitiveTes
         assertEquals(1, traceService.forUnit(received.unitId()).size());
     }
 
+    @Test
+    public void aSplitOfAStockedDonationMustCarryItsGroup() {
+        String productCode = mapOwnProductCode();
+        String split = productCode.substring(0, 5) + "V01";
+        String din = din();
+        assertTrue(unitService
+                .receive(List.of(new ReceiveLine(null, din, productCode, "O NEG", "2026-11-30", null, null, null)),
+                        TEST_SYS_USER_ID)
+                .get(0).received());
+
+        ReceiveLineResult otherGroup = unitService
+                .receive(List.of(new ReceiveLine(null, din, split, "A POS", "2026-11-30", null, null, null)),
+                        TEST_SYS_USER_ID)
+                .get(0);
+        ReceiveLineResult sameGroup = unitService
+                .receive(List.of(new ReceiveLine(null, din, split, "O NEG", "2026-11-30", null, null, null)),
+                        TEST_SYS_USER_ID)
+                .get(0);
+
+        assertFalse(otherGroup.received());
+        assertEquals(List.of("bloodbank.receive.error.groupConflict"),
+                otherGroup.errors().stream().map(e -> e.code()).toList());
+        assertEquals(List.of(din, "O", "NEG"), otherGroup.errors().get(0).args());
+        assertTrue(String.valueOf(sameGroup.errors()), sameGroup.received());
+        assertEquals(2, unitDAO.getByDonationNumber(din).size());
+    }
+
     // ------------------------------------------------------------------ the whole
     // way
 
