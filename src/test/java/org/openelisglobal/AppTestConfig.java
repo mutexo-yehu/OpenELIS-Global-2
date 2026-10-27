@@ -45,6 +45,7 @@ import org.openelisglobal.result.controller.AnalyzerResultsController;
 import org.openelisglobal.result.controller.rest.AccessionResultsRestController;
 import org.openelisglobal.role.service.RoleService;
 import org.openelisglobal.security.certs.service.TruststoreService;
+import org.openelisglobal.security.login.LocalLoginPolicy;
 import org.openelisglobal.typeofsample.service.TypeOfSampleService;
 import org.ozeki.sms.service.OzekiMessageOutService;
 import org.springframework.beans.BeanUtils;
@@ -528,5 +529,16 @@ public class AppTestConfig implements WebMvcConfigurer {
     @Profile("test")
     public DataExportTaskDAO dataExportTaskDAO() {
         return mock(DataExportTaskDAO.class);
+    }
+
+    /**
+     * The login package is kept out of the component scan, but the e-signature
+     * credential check consults the local sign-in policy. An empty allow-list lets
+     * every account sign in locally, which is the default.
+     */
+    @Bean
+    @Profile("test")
+    public LocalLoginPolicy localLoginPolicy() {
+        return new LocalLoginPolicy("");
     }
 }
