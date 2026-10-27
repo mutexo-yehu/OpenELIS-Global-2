@@ -408,11 +408,12 @@ public class PatientReportV1PopulatorTest extends BaseWebContextSensitiveTest {
 
         assertTrue(text, text.contains("Results: partial report"));
         assertTrue(text, text.contains("1 Serum " + time("2026-10-01 08:10:00")));
-        assertTrue(text, text.contains("Glucose (Serum) 1 Hexokinase"));
+        assertTrue(text, text.contains("Glucose 1 Hexokinase"));
         assertTrue(text, text.contains("↑ H 3.9-5.8 " + time("2026-10-01 10:15:00")));
-        assertTrue(text, text.contains("Creatinine (Serum) 1 80 60-110 " + time("2026-10-01 11:40:00")));
-        assertTrue(text, text.contains("Urea (Urine) 2 Awaiting validation"));
-        assertTrue(text, text.contains("Potassium (Whole blood) 3 Sample rejected"));
+        assertTrue(text, text.contains("Creatinine 1 80 60-110 " + time("2026-10-01 11:40:00")));
+        assertTrue(text, text.contains("Urea 2 Awaiting validation"));
+        assertTrue(text, text.contains("Potassium 3 Sample rejected"));
+        assertFalse("the specimen is not repeated after each test name", text.contains("(Whole blood)"));
         assertFalse(text, text.contains("Specimen"));
     }
 

@@ -383,6 +383,9 @@ public class PatientCILNSPClinical_vreduit extends PatientReport implements IRep
     }
 
     private String validatorName(Analysis analysis) {
+        if (analysis.getReleasedDate() == null) {
+            return null;
+        }
         History release = null;
         for (History entry : SpringContext.getBean(HistoryService.class)
                 .getHistoryByRefIdAndRefTableId(analysis.getId(), AnalysisServiceImpl.getTableReferenceId())) {
@@ -885,8 +888,12 @@ public class PatientCILNSPClinical_vreduit extends PatientReport implements IRep
         return true;
     }
 
+    /**
+     * The specimen is already named in the Samples block and on the row's sample
+     * number, so the test name is not suffixed with it.
+     */
     @Override
     protected boolean appendSampleTypeToTestName() {
-        return true;
+        return false;
     }
 }

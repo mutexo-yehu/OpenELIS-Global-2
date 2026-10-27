@@ -134,6 +134,27 @@ public class PatientResultsPdfTest extends BaseWebContextSensitiveTest {
     }
 
     @Test
+    public void aCardFieldWithNoValueIsLeftOutRatherThanPrintedAsABareLabel() throws Exception {
+        List<ClinicalPatientData> rows = rows(ORDER);
+        for (ClinicalPatientData data : rows) {
+            data.setSubjectNumber("");
+            data.setLabOrderType(null);
+        }
+
+        List<String> lines = lines(PdfText.of(render(rows, Map.of(ORDER, order()))));
+
+        assertTrue("no Patient ID label without an ID", lines.stream().noneMatch(line -> line.contains("Patient ID")));
+        assertTrue("no Program label without a program", lines.stream().noneMatch(line -> line.contains("Program")));
+        assertContains(lines, "National ID NID-778");
+        assertContains(lines, "Lab Number " + ORDER);
+    }
+
+    @Test
+    public void thePatientReportDoesNotRepeatTheSampleTypeAfterEachTestName() {
+        assertFalse(new PatientCILNSPClinical_vreduit().appendSampleTypeToTestName());
+    }
+
+    @Test
     public void samplesBlockListsEachSampleWithItsTimesAndCondition() throws Exception {
         PatientReportOrder order = order();
         order.setSamples(List.of(

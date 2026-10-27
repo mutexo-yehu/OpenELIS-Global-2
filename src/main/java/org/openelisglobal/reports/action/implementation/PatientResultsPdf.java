@@ -304,9 +304,12 @@ final class PatientResultsPdf {
     }
 
     private void field(PdfPTable block, String label, String value, boolean code) {
+        String shown = PdfReportText.plain(value);
+        if (GenericValidator.isBlankOrNull(shown) || shown.isBlank()) {
+            return;
+        }
         block.addCell(compact(text(label, fonts.regular(7.5f, GRAY), Element.ALIGN_LEFT)));
-        block.addCell(compact(text(PdfReportText.plain(value), code ? fonts.mono(8) : fonts.regular(8, Color.BLACK),
-                Element.ALIGN_LEFT)));
+        block.addCell(compact(text(shown, code ? fonts.mono(8) : fonts.regular(8, Color.BLACK), Element.ALIGN_LEFT)));
     }
 
     /** A card or Samples line at the 9.5 pt pitch of the design. */
