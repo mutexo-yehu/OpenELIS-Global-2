@@ -53,10 +53,25 @@ public final class IssueSafetyChecker {
      * @param scannedDonationNumber the donation number scanned or typed from the
      *                              bag in hand, as received (a DIN scan, the 13
      *                              characters, or the 13 plus the check character)
+     * @param secondCheckMode       the site's second-check setting
+     * @param collectorName         the person collecting the unit; null in a dry
+     *                              run
      */
     public record IssueSnapshot(UnitFacts unit, ReservationFacts reservation, Long scannedPatientId,
             PatientBloodProfile profile, BloodBankRules rules, SecondCheckOutcome secondCheck,
-            String scannedDonationNumber) {
+            String scannedDonationNumber, SecondCheckMode secondCheckMode, String collectorName) {
+
+        public IssueSnapshot {
+            secondCheckMode = secondCheckMode == null ? SecondCheckMode.REQUIRED : secondCheckMode;
+        }
+
+        /** A snapshot under the default setting: a second person is required. */
+        public IssueSnapshot(UnitFacts unit, ReservationFacts reservation, Long scannedPatientId,
+                PatientBloodProfile profile, BloodBankRules rules, SecondCheckOutcome secondCheck,
+                String scannedDonationNumber) {
+            this(unit, reservation, scannedPatientId, profile, rules, secondCheck, scannedDonationNumber,
+                    SecondCheckMode.REQUIRED, null);
+        }
     }
 
     /** How the second person's re-authentication ended. */
@@ -75,7 +90,7 @@ public final class IssueSafetyChecker {
         checks.addAll(BloodCompatibility.check(unit.componentClass(), unit.abo(), unit.rhd(),
                 snapshot.profile() == null ? null : snapshot.profile().group(), snapshot.rules()));
         checks.add(crossmatch(unit, snapshot.reservation(), snapshot.profile(), now));
-        checks.add(secondPerson(snapshot.secondCheck()));
+        checks.add(secondPerson(snapshot.secondCheck(), snapshot.secondCheckMode(), snapshot.collectorName()));
         return checks;
     }
 
@@ -168,16 +183,36 @@ public final class IssueSafetyChecker {
         return SafetyCheck.pass(CROSSMATCH, "bloodbank.check.crossmatch.ok", result.validUntil().toString());
     }
 
-    static SafetyCheck secondPerson(SecondCheckOutcome outcome) {
+    /**
+     * The second check under the site's setting. Credentials that were given are
+     * always checked, whatever the mode: a refused second sign-in fails the issue.
+     * Without credentials, REQUIRED waits for them, OPTIONAL_WITH_REASON warns (so
+     * the issue needs a reason, kept in the trail), and COLLECTOR_CONFIRMS passes
+     * once the collector is named.
+     */
+    static SafetyCheck secondPerson(SecondCheckOutcome outcome, SecondCheckMode mode, String collectorName) {
         SecondCheckOutcome value = outcome == null ? SecondCheckOutcome.NOT_PROVIDED : outcome;
+        if (value == SecondCheckOutcome.NOT_PROVIDED) {
+            switch (mode == null ? SecondCheckMode.REQUIRED : mode) {
+            case OPTIONAL_WITH_REASON:
+                return SafetyCheck.warn(SECOND_PERSON, "bloodbank.check.secondPerson.singlePerson");
+            case COLLECTOR_CONFIRMS:
+                if (collectorName == null || collectorName.isBlank()) {
+                    return SafetyCheck.pending(SECOND_PERSON, "bloodbank.check.secondPerson.collectorPending");
+                }
+                return SafetyCheck.pass(SECOND_PERSON, "bloodbank.check.secondPerson.collectorConfirms",
+                        collectorName.trim());
+            default:
+                return SafetyCheck.pending(SECOND_PERSON, "bloodbank.check.secondPerson.required");
+            }
+        }
         return switch (value) {
         case VERIFIED -> SafetyCheck.pass(SECOND_PERSON, "bloodbank.check.secondPerson.verified");
-        case NOT_PROVIDED -> SafetyCheck.pending(SECOND_PERSON, "bloodbank.check.secondPerson.required");
         case SAME_USER -> SafetyCheck.fail(SECOND_PERSON, "bloodbank.check.secondPerson.sameUser");
         case UNKNOWN_USER, INVALID_CREDENTIALS ->
             SafetyCheck.fail(SECOND_PERSON, "bloodbank.check.secondPerson.invalid");
         case INACTIVE_USER -> SafetyCheck.fail(SECOND_PERSON, "bloodbank.check.secondPerson.inactive");
-        case UNAVAILABLE -> SafetyCheck.fail(SECOND_PERSON, "bloodbank.check.secondPerson.unavailable");
+        case UNAVAILABLE, NOT_PROVIDED -> SafetyCheck.fail(SECOND_PERSON, "bloodbank.check.secondPerson.unavailable");
         };
     }
 }

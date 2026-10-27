@@ -24,6 +24,7 @@ import org.openelisglobal.bloodbank.safety.IssueSafetyChecker.UnitFacts;
 import org.openelisglobal.bloodbank.safety.PatientBloodProfile;
 import org.openelisglobal.bloodbank.safety.PatientBloodProfile.CrossmatchResult;
 import org.openelisglobal.bloodbank.safety.SafetyCheck;
+import org.openelisglobal.bloodbank.safety.SecondCheckMode;
 import org.openelisglobal.bloodbank.service.BloodBankException.Kind;
 import org.openelisglobal.bloodbank.service.BloodUnitTrail.Entry;
 import org.openelisglobal.bloodbank.service.SecondPersonVerifier.Verification;
@@ -185,10 +186,10 @@ public class BloodIssueServiceImpl implements BloodIssueService {
     public IssueCheck check(Long unitId, String patientIdentifier, String scannedDonationNumber) {
         BloodUnit unit = unitDAO.get(unitId).orElseThrow(() -> BloodUnitServiceImpl.notFound(unitId));
         IssueSnapshot snapshot = snapshot(unit, patientIdentifier, scannedDonationNumber,
-                SecondCheckOutcome.NOT_PROVIDED);
+                SecondCheckOutcome.NOT_PROVIDED, null);
         List<SafetyCheck> checks = IssueSafetyChecker.check(snapshot, clock);
         return new IssueCheck(unitId, snapshot.scannedPatientId(), IssueSafetyChecker.nothingFailed(checks),
-                IssueSafetyChecker.needsWarningReason(checks), checks);
+                IssueSafetyChecker.needsWarningReason(checks), checks, snapshot.secondCheckMode());
     }
 
     @Override
@@ -210,7 +211,7 @@ public class BloodIssueServiceImpl implements BloodIssueService {
 
         BloodUnit unit = unitDAO.getForUpdate(unitId).orElseThrow(() -> BloodUnitServiceImpl.notFound(unitId));
         IssueSnapshot snapshot = snapshot(unit, request.patientIdentifier(), request.scannedDonationNumber(),
-                second.outcome());
+                second.outcome(), request.collectorName());
         List<SafetyCheck> checks = IssueSafetyChecker.check(snapshot, clock);
         if (!IssueSafetyChecker.allowsIssue(checks)) {
             throw new BloodBankException(Kind.UNSAFE, "bloodbank.issue.error.checksFailed", checks);
@@ -228,10 +229,10 @@ public class BloodIssueServiceImpl implements BloodIssueService {
         unit.setStatus(UnitStatus.ISSUED);
         unit.setSysUserId(String.valueOf(user));
         unitDAO.update(unit);
-        String summary = checks.stream().map(c -> c.code() + "=" + c.status()).collect(Collectors.joining(", "));
         BloodUnitEvent event = trail.record(unit, EventType.ISSUED, user, now,
                 new Entry(reservation.getPatientId(), reservation.getId(), second.verifiedUserId(),
-                        request.warningReason(), request.location(), request.collectorName(), "checks: " + summary));
+                        request.warningReason(), request.location(), request.collectorName(),
+                        issueDetails(checks, snapshot.secondCheckMode())));
         return result(unit, now, List.of(event));
     }
 
@@ -305,8 +306,18 @@ public class BloodIssueServiceImpl implements BloodIssueService {
                 .orElseThrow(() -> new BloodBankException(Kind.CONFLICT, "bloodbank.error.notIssued", "ISSUED"));
     }
 
+    /**
+     * The issue entry's details: every check and its outcome, then the second-check
+     * setting in force, e.g. {@code checks: ABO=PASS, RHD=PASS; secondCheck:
+     * REQUIRED}. The trail screen reads this format.
+     */
+    static String issueDetails(List<SafetyCheck> checks, SecondCheckMode mode) {
+        String summary = checks.stream().map(c -> c.code() + "=" + c.status()).collect(Collectors.joining(", "));
+        return "checks: " + summary + "; secondCheck: " + mode;
+    }
+
     private IssueSnapshot snapshot(BloodUnit unit, String patientIdentifier, String scannedDonationNumber,
-            SecondCheckOutcome secondCheck) {
+            SecondCheckOutcome secondCheck, String collectorName) {
         BloodUnitReservation reservation = reservationDAO.getForUnit(unit.getId(), ReservationStatus.ACTIVE)
                 .orElse(null);
         Long scannedPatientId = profileService.resolvePatientIdentifier(patientIdentifier);
@@ -315,8 +326,9 @@ public class BloodIssueServiceImpl implements BloodIssueService {
         ReservationFacts reservationFacts = reservation == null ? null
                 : new ReservationFacts(reservation.getId(), reservation.getPatientId(), reservation.getStatus(),
                         reservation.getCrossmatchResultId());
-        return new IssueSnapshot(facts(unit), reservationFacts, scannedPatientId, profile,
-                settingsService.get().rules(), secondCheck, scannedDonationNumber);
+        BloodBankSettings settings = settingsService.get();
+        return new IssueSnapshot(facts(unit), reservationFacts, scannedPatientId, profile, settings.rules(),
+                secondCheck, scannedDonationNumber, settings.secondCheck(), collectorName);
     }
 
     private static UnitFacts facts(BloodUnit unit) {

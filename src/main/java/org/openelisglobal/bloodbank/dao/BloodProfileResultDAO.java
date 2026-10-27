@@ -25,4 +25,7 @@ public interface BloodProfileResultDAO {
 
     /** The patient that the sample with this lab number belongs to, or null. */
     String getPatientIdForAccession(String accessionNumber);
+
+    /** The lab number of the sample that a result belongs to, or null. */
+    String getAccessionForResult(String resultId);
 }

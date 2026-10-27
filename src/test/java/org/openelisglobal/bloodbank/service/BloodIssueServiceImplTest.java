@@ -42,6 +42,7 @@ import org.openelisglobal.bloodbank.safety.PatientBloodProfile.CrossmatchResult;
 import org.openelisglobal.bloodbank.safety.PatientBloodProfile.PatientGroup;
 import org.openelisglobal.bloodbank.safety.SafetyCheck;
 import org.openelisglobal.bloodbank.safety.SafetyCheck.CheckStatus;
+import org.openelisglobal.bloodbank.safety.SecondCheckMode;
 import org.openelisglobal.bloodbank.service.BloodBankException.Kind;
 import org.openelisglobal.bloodbank.service.SecondPersonVerifier.Verification;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.Abo;
@@ -331,6 +332,7 @@ public class BloodIssueServiceImplTest {
         assertEquals("Porter Example", event.getValue().getCollectorName());
         assertEquals(PATIENT, event.getValue().getPatientId());
         assertTrue(event.getValue().getDetails().contains("SECOND_PERSON=PASS"));
+        assertTrue(event.getValue().getDetails().endsWith("; secondCheck: REQUIRED"));
     }
 
     @Test
@@ -556,10 +558,104 @@ public class BloodIssueServiceImplTest {
         assertEquals(false, service.check(UNIT, LAB_NUMBER, BAG_DIN).allowed());
 
         when(settingsService.get()).thenReturn(new BloodBankSettings("", "", "", "", "", List.of("Compatible"), 72, 48,
-                30, true, RuleAction.WARN, RuleAction.WARN));
+                30, true, RuleAction.WARN, RuleAction.WARN, SecondCheckMode.REQUIRED));
         IssueCheck warned = service.check(UNIT, LAB_NUMBER, BAG_DIN);
         assertTrue(warned.allowed());
         assertTrue(warned.warningReasonRequired());
         verify(profileService, times(2)).getProfile(eq(PATIENT));
+    }
+
+    // ------------------------------------------------------------------ second
+    // check setting
+
+    private void secondCheck(SecondCheckMode mode) {
+        BloodBankSettings d = BloodBankSettings.DEFAULTS;
+        when(settingsService.get()).thenReturn(new BloodBankSettings("", "", "", "", "", d.crossmatchCompatibleValues(),
+                72, 48, 30, true, d.rhdNegPatientRhdPosPlatelets(), d.unconfirmedGroupORedCells(), mode));
+    }
+
+    private static IssueRequest alone(String reason) {
+        return new IssueRequest(LAB_NUMBER, "Ward 3", "Porter Example", null, null, null, reason, BAG_DIN);
+    }
+
+    private void readyToIssueAlone() {
+        readyToIssue(new Verification(SecondCheckOutcome.VERIFIED, 11));
+        when(secondPersonVerifier.verify(ISSUER, null, null, null))
+                .thenReturn(new Verification(SecondCheckOutcome.NOT_PROVIDED, null));
+    }
+
+    @Test
+    public void requiredSecondCheckRefusesOnePerson() {
+        secondCheck(SecondCheckMode.REQUIRED);
+        readyToIssueAlone();
+
+        BloodBankException e = expectRefusal(() -> service.issue(UNIT, alone("nobody else on shift"), ISSUER));
+
+        assertEquals("bloodbank.issue.error.checksFailed", e.getErrorCode());
+        assertTrue(e.getChecks().stream()
+                .anyMatch(c -> "SECOND_PERSON".equals(c.code()) && c.status() == CheckStatus.PENDING));
+        verifyZeroInteractions(eventDAO);
+    }
+
+    @Test
+    public void optionalSecondCheckNeedsAReasonForOnePersonAndKeepsIt() {
+        secondCheck(SecondCheckMode.OPTIONAL_WITH_REASON);
+        readyToIssueAlone();
+
+        BloodBankException e = expectRefusal(() -> service.issue(UNIT, alone(" "), ISSUER));
+        assertEquals("bloodbank.issue.error.warningReasonRequired", e.getErrorCode());
+        verifyZeroInteractions(eventDAO);
+
+        service.issue(UNIT, alone("Night shift, one scientist on duty"), ISSUER);
+
+        ArgumentCaptor<BloodUnitEvent> event = ArgumentCaptor.forClass(BloodUnitEvent.class);
+        verify(eventDAO).append(event.capture());
+        assertEquals("Night shift, one scientist on duty", event.getValue().getReason());
+        assertEquals(null, event.getValue().getSecondCheckerId());
+        assertTrue(event.getValue().getDetails(), event.getValue().getDetails().contains("SECOND_PERSON=WARN")
+                && event.getValue().getDetails().endsWith("; secondCheck: OPTIONAL_WITH_REASON"));
+    }
+
+    @Test
+    public void optionalSecondCheckWithASecondPersonNeedsNoReason() {
+        secondCheck(SecondCheckMode.OPTIONAL_WITH_REASON);
+        readyToIssue(new Verification(SecondCheckOutcome.VERIFIED, 11));
+
+        service.issue(UNIT, request(null), ISSUER);
+
+        verify(eventDAO).append(argThat(ev -> Integer.valueOf(11).equals(ev.getSecondCheckerId())
+                && ev.getReason() == null && ev.getDetails().contains("SECOND_PERSON=PASS")));
+    }
+
+    @Test
+    public void collectorConfirmsIssuesWithoutASecondSignIn() {
+        secondCheck(SecondCheckMode.COLLECTOR_CONFIRMS);
+        readyToIssueAlone();
+
+        UnitActionResult result = service.issue(UNIT, alone(null), ISSUER);
+
+        assertEquals(UnitStatus.ISSUED, result.unit().status());
+        verify(eventDAO).append(argThat(ev -> "Porter Example".equals(ev.getCollectorName())
+                && ev.getSecondCheckerId() == null && ev.getDetails().contains("SECOND_PERSON=PASS")
+                && ev.getDetails().endsWith("; secondCheck: COLLECTOR_CONFIRMS")));
+    }
+
+    @Test
+    public void theDryRunTellsTheScreenWhichSecondCheckApplies() {
+        for (SecondCheckMode mode : SecondCheckMode.values()) {
+            secondCheck(mode);
+            reservedFor(PATIENT);
+            when(unitDAO.get(UNIT)).thenReturn(Optional.of(unit));
+            when(profileService.resolvePatientIdentifier(LAB_NUMBER)).thenReturn(PATIENT);
+            when(profileService.getProfile(PATIENT))
+                    .thenReturn(profile(Abo.A, RhD.NEG, crossmatch(NOW.plus(Duration.ofHours(5)), true, UNIT)));
+
+            IssueCheck check = service.check(UNIT, LAB_NUMBER, BAG_DIN);
+
+            assertEquals(mode, check.secondCheckMode());
+            assertTrue(mode.name(), check.allowed());
+            assertEquals(mode.name(), mode == SecondCheckMode.OPTIONAL_WITH_REASON, check.warningReasonRequired());
+        }
+        verifyZeroInteractions(secondPersonVerifier, eventDAO);
     }
 }

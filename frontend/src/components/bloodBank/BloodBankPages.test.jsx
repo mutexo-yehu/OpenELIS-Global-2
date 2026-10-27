@@ -1,5 +1,6 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { waitFor } from "@testing-library/dom";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
 import { MemoryRouter } from "react-router-dom";
@@ -10,6 +11,7 @@ import {
   BloodBankStockPage,
   BloodBankTracePage,
 } from "./BloodBankPages";
+import { ProfilePanel } from "./BloodBankPatientIssue";
 import BloodBankService from "./BloodBankService";
 import messages from "../../languages/en.json";
 
@@ -126,6 +128,146 @@ describe("blood bank pages", () => {
     expect(BloodBankService.trace).toHaveBeenCalledWith({ unit: "1" });
     expect(
       screen.getByText(messages["bloodbank.event.ISSUED"]),
+    ).toBeInTheDocument();
+  });
+
+  it("stock survives a filter and a tab change that replace every row", async () => {
+    renderPage(BloodBankStockPage);
+    expect(await screen.findByText("G123498654321")).toBeInTheDocument();
+
+    // the filtered list shares no unit with the one on screen
+    BloodBankService.listUnits.mockResolvedValue([
+      unit({ id: 3, donationNumber: "G123498654323", abo: "A", rhd: "POS" }),
+    ]);
+    fireEvent.change(screen.getByLabelText(messages["bloodbank.field.abo"]), {
+      target: { value: "A" },
+    });
+    expect(await screen.findByText("G123498654323")).toBeInTheDocument();
+    expect(screen.queryByText("G123498654321")).toBeNull();
+
+    BloodBankService.listUnits.mockResolvedValue([
+      unit({ id: 4, donationNumber: "G123498654324", status: "ISSUED" }),
+    ]);
+    fireEvent.click(
+      screen.getByRole("tab", {
+        name: messages["bloodbank.stock.tab.issued"],
+      }),
+    );
+    expect(await screen.findByText("G123498654324")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(BloodBankService.listUnits).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: ["ISSUED"], abo: "A" }),
+      ),
+    );
+    expect(screen.queryByText("G123498654323")).toBeNull();
+  });
+
+  it("the trail names the patient and reads the issue checks", async () => {
+    BloodBankService.trace.mockResolvedValue([
+      {
+        id: 11,
+        unitId: 1,
+        donationNumber: "G123498654321",
+        eventType: "RESERVED",
+        patientId: 63,
+        patientName: "Example Patient",
+        patientNationalId: "DEMO-0001",
+        labNumber: "26-000123",
+        performedByName: "Example Issuer",
+        occurredAt: "2026-11-01T09:00:00Z",
+        details:
+          "crossmatch result 900 (26-000123), valid until 2026-11-03T10:00:00Z",
+      },
+      {
+        id: 12,
+        unitId: 1,
+        donationNumber: "G123498654321",
+        eventType: "ISSUED",
+        patientId: 63,
+        patientName: "Example Patient",
+        patientNationalId: "DEMO-0001",
+        performedByName: "Example Issuer",
+        occurredAt: "2026-11-01T10:00:00Z",
+        details:
+          "checks: UNIT_STATUS=PASS, UNIT_MATCH=PASS, EXPIRY=PASS; secondCheck: REQUIRED",
+      },
+    ]);
+    renderPage(BloodBankTracePage, "/bloodbank/trace?patient=63");
+
+    expect(
+      await screen.findByText(
+        messages["bloodbank.trace.details.allPassed"].replace("{count}", "3"),
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Example Patient · ID DEMO-0001/).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText("#63")).toBeNull();
+    expect(screen.queryByText(/UNIT_MATCH=PASS/)).toBeNull();
+    expect(
+      screen.getByText(/^Crossmatch 26-000123, valid until /),
+    ).not.toHaveTextContent("Z");
+  });
+
+  it("a discrepancy shows each sample's result, not one group", () => {
+    render(
+      <IntlProvider locale="en" messages={messages}>
+        <ProfilePanel
+          profile={{
+            group: {
+              abo: "B",
+              rhd: "POS",
+              confirmed: false,
+              discrepancy: true,
+              aboSampleCount: 2,
+              rhdSampleCount: 2,
+            },
+            typings: [
+              {
+                kind: "ABO",
+                sampleId: 1,
+                accessionNumber: "26-0001",
+                collectedAt: "2026-10-26T10:00:00Z",
+                value: "A",
+              },
+              {
+                kind: "RHD",
+                sampleId: 1,
+                accessionNumber: "26-0001",
+                collectedAt: "2026-10-26T10:00:00Z",
+                value: "Positive",
+              },
+              {
+                kind: "ABO",
+                sampleId: 2,
+                accessionNumber: "26-0002",
+                collectedAt: "2026-10-27T10:00:00Z",
+                value: "B",
+              },
+              {
+                kind: "RHD",
+                sampleId: 2,
+                accessionNumber: "26-0002",
+                collectedAt: "2026-10-27T10:00:00Z",
+                value: "Positive",
+              },
+            ],
+            crossmatches: [],
+            notConfigured: [],
+          }}
+        />
+      </IntlProvider>,
+    );
+
+    expect(
+      screen.getByText(messages["bloodbank.profile.discrepancy"]),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("B RhD pos")).toBeNull();
+    expect(
+      screen.getByText(/^26-0001 .*ABO A, RhD Positive$/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/^26-0002 .*ABO B, RhD Positive$/),
     ).toBeInTheDocument();
   });
 });

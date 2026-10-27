@@ -35,6 +35,7 @@ import org.openelisglobal.bloodbank.form.BloodBankViews.UnitActionResult;
 import org.openelisglobal.bloodbank.safety.IssueSafetyChecker.SecondCheckOutcome;
 import org.openelisglobal.bloodbank.safety.PatientBloodProfile;
 import org.openelisglobal.bloodbank.safety.PatientBloodProfile.CrossmatchResult;
+import org.openelisglobal.bloodbank.safety.SecondCheckMode;
 import org.openelisglobal.bloodbank.service.SecondPersonVerifier.Verification;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.Abo;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.EventType;
@@ -307,6 +308,19 @@ public class BloodBankDatabaseIntegrationTest extends BaseWebContextSensitiveTes
     }
 
     @Test
+    public void theSecondCheckSettingIsSeededAsRequired() {
+        assertEquals("REQUIRED", jdbcTemplate.queryForObject(
+                "SELECT value FROM site_information WHERE name = 'bloodbank.secondCheck'", String.class));
+        assertEquals(SecondCheckMode.REQUIRED, savedSettings.secondCheck());
+        try {
+            assertEquals(SecondCheckMode.COLLECTOR_CONFIRMS, settingsService
+                    .update(Map.of("secondCheck", "COLLECTOR_CONFIRMS"), TEST_SYS_USER_ID).secondCheck());
+        } finally {
+            settingsService.update(Map.of("secondCheck", "REQUIRED"), TEST_SYS_USER_ID);
+        }
+    }
+
+    @Test
     public void aLabNumberOrNationalIdResolvesToItsPatient() {
         Grouped grouped = groupedPatient();
         String nationalId = jdbcTemplate.queryForObject("SELECT national_id FROM patient WHERE id = ?", String.class,
@@ -477,6 +491,11 @@ public class BloodBankDatabaseIntegrationTest extends BaseWebContextSensitiveTes
         assertEquals(Integer.valueOf(2), issue.secondCheckerId());
         assertEquals("Ward 3", issue.location());
         assertEquals(Long.valueOf(grouped.patientId()), issue.patientId());
+        // the trail names the patient and the crossmatch sample, not just record
+        // numbers
+        assertEquals("Bloodbank Fictional" + suffix, issue.patientName());
+        assertEquals(grouped.lastAccession(), issue.labNumber());
+        assertTrue(issue.details(), issue.details().endsWith("; secondCheck: REQUIRED"));
         // receipt names no patient; the other three do
         assertEquals(List.of(EventType.RESERVED, EventType.ISSUED, EventType.RETURNED),
                 traceService.forPatient(grouped.patientId()).stream().map(EventView::eventType).toList());

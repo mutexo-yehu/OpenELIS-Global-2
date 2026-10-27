@@ -3,6 +3,7 @@ package org.openelisglobal.bloodbank.service;
 import java.util.List;
 import org.openelisglobal.bloodbank.safety.BloodBankRules;
 import org.openelisglobal.bloodbank.safety.BloodBankRules.RuleAction;
+import org.openelisglobal.bloodbank.safety.SecondCheckMode;
 
 /**
  * The blood bank's site settings ({@code site_information} rows named
@@ -21,11 +22,12 @@ import org.openelisglobal.bloodbank.safety.BloodBankRules.RuleAction;
  * @param twoSampleGroup               see {@link BloodBankRules}
  * @param rhdNegPatientRhdPosPlatelets see {@link BloodBankRules}
  * @param unconfirmedGroupORedCells    see {@link BloodBankRules}
+ * @param secondCheck                  see {@link SecondCheckMode}
  */
 public record BloodBankSettings(String testAbo, String testRhd, String testAntibodyScreen, String testDat,
         String testCrossmatch, List<String> crossmatchCompatibleValues, int crossmatchValidHours, int expiryWarnHours,
         int returnWindowMinutes, boolean twoSampleGroup, RuleAction rhdNegPatientRhdPosPlatelets,
-        RuleAction unconfirmedGroupORedCells) {
+        RuleAction unconfirmedGroupORedCells, SecondCheckMode secondCheck) {
 
     public static final String TEST_ABO = "bloodbank.test.abo";
     public static final String TEST_RHD = "bloodbank.test.rhd";
@@ -39,14 +41,16 @@ public record BloodBankSettings(String testAbo, String testRhd, String testAntib
     public static final String RULE_TWO_SAMPLE = "bloodbank.rule.twoSampleGroup";
     public static final String RULE_RHD_PLATELETS = "bloodbank.rule.rhdNegPatientRhdPosPlatelets";
     public static final String RULE_UNCONFIRMED_O = "bloodbank.rule.unconfirmedGroupORedCells";
+    public static final String SECOND_CHECK = "bloodbank.secondCheck";
 
     /** What applies when a setting row is missing or unreadable. */
     public static final BloodBankSettings DEFAULTS = new BloodBankSettings("", "", "", "", "", List.of("Compatible"),
-            72, 48, 30, true, RuleAction.WARN, RuleAction.BLOCK);
+            72, 48, 30, true, RuleAction.WARN, RuleAction.BLOCK, SecondCheckMode.REQUIRED);
 
     public BloodBankSettings {
         crossmatchCompatibleValues = crossmatchCompatibleValues == null ? List.of()
                 : List.copyOf(crossmatchCompatibleValues);
+        secondCheck = secondCheck == null ? SecondCheckMode.REQUIRED : secondCheck;
     }
 
     public BloodBankRules rules() {

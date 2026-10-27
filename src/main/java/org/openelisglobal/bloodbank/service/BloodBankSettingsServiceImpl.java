@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import org.openelisglobal.bloodbank.safety.BloodBankRules.RuleAction;
+import org.openelisglobal.bloodbank.safety.SecondCheckMode;
 import org.openelisglobal.bloodbank.service.BloodBankException.Kind;
 import org.openelisglobal.siteinformation.service.SiteInformationService;
 import org.openelisglobal.siteinformation.valueholder.SiteInformation;
@@ -34,6 +35,7 @@ public class BloodBankSettingsServiceImpl implements BloodBankSettingsService {
         KEYS.put("twoSampleGroup", BloodBankSettings.RULE_TWO_SAMPLE);
         KEYS.put("rhdNegPatientRhdPosPlatelets", BloodBankSettings.RULE_RHD_PLATELETS);
         KEYS.put("unconfirmedGroupORedCells", BloodBankSettings.RULE_UNCONFIRMED_O);
+        KEYS.put("secondCheck", BloodBankSettings.SECOND_CHECK);
     }
 
     @Autowired
@@ -52,7 +54,8 @@ public class BloodBankSettingsServiceImpl implements BloodBankSettingsService {
                 number(BloodBankSettings.RETURN_WINDOW_MINUTES, d.returnWindowMinutes(), 0, 1440),
                 !"false".equalsIgnoreCase(text(BloodBankSettings.RULE_TWO_SAMPLE, "true")),
                 RuleAction.parse(text(BloodBankSettings.RULE_RHD_PLATELETS, null), d.rhdNegPatientRhdPosPlatelets()),
-                RuleAction.parse(text(BloodBankSettings.RULE_UNCONFIRMED_O, null), d.unconfirmedGroupORedCells()));
+                RuleAction.parse(text(BloodBankSettings.RULE_UNCONFIRMED_O, null), d.unconfirmedGroupORedCells()),
+                SecondCheckMode.parse(text(BloodBankSettings.SECOND_CHECK, null)));
     }
 
     @Override
@@ -110,6 +113,12 @@ public class BloodBankSettingsServiceImpl implements BloodBankSettingsService {
                 throw new BloodBankException(Kind.INVALID, "bloodbank.settings.error.value", key);
             }
             return action.name();
+        case "secondCheck":
+            SecondCheckMode mode = SecondCheckMode.strictParse(String.valueOf(value));
+            if (mode == null) {
+                throw new BloodBankException(Kind.INVALID, "bloodbank.settings.error.value", key);
+            }
+            return mode.name();
         default:
             // test catalogue codes: free text, may be cleared
             String code = String.valueOf(value).trim();

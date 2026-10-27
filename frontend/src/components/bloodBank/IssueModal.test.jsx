@@ -197,4 +197,113 @@ describe("IssueModal", () => {
     ).toHaveValue("");
     expect(issueButton()).toBeDisabled();
   });
+
+  it("lets one person issue with a reason when the second check is optional", async () => {
+    BloodBankService.issueCheck.mockResolvedValue({
+      unitId: 5,
+      allowed: true,
+      warningReasonRequired: true,
+      secondCheckMode: "OPTIONAL_WITH_REASON",
+      checks: checksWith(pass("RHD")).map((c) =>
+        c.code === "SECOND_PERSON"
+          ? {
+              ...c,
+              status: "WARN",
+              messageKey: "bloodbank.check.secondPerson.singlePerson",
+            }
+          : c,
+      ),
+    });
+    BloodBankService.issue.mockResolvedValue({
+      unit: { ...unit, status: "ISSUED" },
+      events: [],
+    });
+    const onIssued = vi.fn();
+    renderModal(onIssued);
+
+    await scanAndCheck();
+    type(messages["bloodbank.field.location"], "Ward 3");
+    type(messages["bloodbank.field.collector"], "Porter Example");
+    expect(issueButton()).toBeDisabled();
+
+    // half a second sign-in is neither one person nor two
+    type(messages["bloodbank.issueModal.secondLogin"], "checker");
+    expect(issueButton()).toBeDisabled();
+    type(messages["bloodbank.issueModal.secondLogin"], "");
+
+    type(
+      messages["bloodbank.issueModal.singlePersonReason"],
+      "Night shift, one scientist on duty",
+    );
+    expect(issueButton()).toBeEnabled();
+    fireEvent.click(issueButton());
+
+    await waitFor(() => expect(onIssued).toHaveBeenCalled());
+    expect(BloodBankService.issue).toHaveBeenCalledWith(
+      5,
+      expect.objectContaining({
+        secondCheckerLogin: "",
+        secondCheckerPassword: "",
+        warningReason: "Night shift, one scientist on duty",
+      }),
+    );
+  });
+
+  it("asks for no second sign-in when the collector confirms", async () => {
+    BloodBankService.issueCheck.mockResolvedValue({
+      unitId: 5,
+      allowed: true,
+      warningReasonRequired: false,
+      secondCheckMode: "COLLECTOR_CONFIRMS",
+      checks: checksWith(pass("RHD")).map((c) =>
+        c.code === "SECOND_PERSON"
+          ? {
+              ...c,
+              messageKey: "bloodbank.check.secondPerson.collectorPending",
+            }
+          : c,
+      ),
+    });
+    BloodBankService.issue.mockResolvedValue({
+      unit: { ...unit, status: "ISSUED" },
+      events: [],
+    });
+    const onIssued = vi.fn();
+    renderModal(onIssued);
+
+    await scanAndCheck();
+
+    expect(screen.getByTestId("bb-collector-confirms")).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(messages["bloodbank.issueModal.secondPassword"]),
+    ).toBeNull();
+    type(messages["bloodbank.field.location"], "Ward 3");
+    expect(issueButton()).toBeDisabled();
+    type(messages["bloodbank.field.collector"], "Porter Example");
+    expect(issueButton()).toBeEnabled();
+    fireEvent.click(issueButton());
+    await waitFor(() => expect(onIssued).toHaveBeenCalled());
+  });
+
+  it("still needs the second sign-in when it is required", async () => {
+    BloodBankService.issueCheck.mockResolvedValue({
+      unitId: 5,
+      allowed: true,
+      warningReasonRequired: false,
+      secondCheckMode: "REQUIRED",
+      checks: checksWith(pass("RHD")),
+    });
+    renderModal();
+
+    await scanAndCheck();
+    type(messages["bloodbank.field.location"], "Ward 3");
+    type(messages["bloodbank.field.collector"], "Porter Example");
+    expect(issueButton()).toBeDisabled();
+    expect(
+      screen.queryByLabelText(messages["bloodbank.issueModal.warningReason"]),
+    ).toBeNull();
+    type(messages["bloodbank.issueModal.secondLogin"], "checker");
+    type(messages["bloodbank.issueModal.secondPassword"], "secret");
+    expect(issueButton()).toBeEnabled();
+  });
 });

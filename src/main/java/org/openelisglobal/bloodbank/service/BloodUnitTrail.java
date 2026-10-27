@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.stream.Stream;
 import org.openelisglobal.bloodbank.dao.BloodUnitEventDAO;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.EventType;
 import org.openelisglobal.bloodbank.valueholder.BloodUnit;
@@ -63,9 +64,19 @@ public class BloodUnitTrail {
             }
             return cache.computeIfAbsent(id, key -> {
                 SystemUser user = systemUserService.getUserById(String.valueOf(key));
-                return user == null ? String.valueOf(key) : user.getDisplayName();
+                return user == null ? String.valueOf(key) : firstLast(user);
             });
         };
+    }
+
+    /** "First Last", or the login name when the account has no name. */
+    static String firstLast(SystemUser user) {
+        String name = String.join(" ", Stream.of(user.getFirstName(), user.getLastName())
+                .filter(part -> part != null && !part.isBlank()).map(String::trim).toList());
+        if (!name.isEmpty()) {
+            return name;
+        }
+        return user.getLoginName() != null ? user.getLoginName() : String.valueOf(user.getId());
     }
 
     private static String limit(String value, int max) {

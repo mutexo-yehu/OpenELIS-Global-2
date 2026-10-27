@@ -64,6 +64,22 @@ public class BloodProfileResultDAOImpl implements BloodProfileResultDAO {
         }
     }
 
+    @Override
+    public String getAccessionForResult(String resultId) {
+        if (resultId == null || resultId.isBlank()) {
+            return null;
+        }
+        try {
+            List<String> accessions = entityManager.unwrap(Session.class)
+                    .createQuery("SELECT s.accessionNumber FROM Result r JOIN r.analysis a JOIN a.sampleItem si"
+                            + " JOIN si.sample s WHERE r.id = :resultId", String.class)
+                    .setParameter("resultId", resultId.trim()).setMaxResults(1).list();
+            return accessions.isEmpty() ? null : accessions.get(0);
+        } catch (RuntimeException e) {
+            throw new LIMSRuntimeException("Error reading the lab number of a result", e);
+        }
+    }
+
     private static String asString(Object value) {
         return value == null ? null : String.valueOf(value);
     }

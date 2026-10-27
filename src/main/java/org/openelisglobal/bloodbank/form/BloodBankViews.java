@@ -2,6 +2,7 @@ package org.openelisglobal.bloodbank.form;
 
 import java.util.List;
 import org.openelisglobal.bloodbank.safety.SafetyCheck;
+import org.openelisglobal.bloodbank.safety.SecondCheckMode;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.Abo;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.ComponentClass;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.EventType;
@@ -47,7 +48,23 @@ public final class BloodBankViews {
     public record EventView(Long id, Long unitId, String donationNumber, String productCode, EventType eventType,
             Long patientId, Long reservationId, Integer performedBy, String performedByName, Integer secondCheckerId,
             String secondCheckerName, String occurredAt, String reason, String location, String collectorName,
-            String details) {
+            String details, String patientName, String patientNationalId, String labNumber) {
+
+        public EventView(Long id, Long unitId, String donationNumber, String productCode, EventType eventType,
+                Long patientId, Long reservationId, Integer performedBy, String performedByName,
+                Integer secondCheckerId, String secondCheckerName, String occurredAt, String reason, String location,
+                String collectorName, String details) {
+            this(id, unitId, donationNumber, productCode, eventType, patientId, reservationId, performedBy,
+                    performedByName, secondCheckerId, secondCheckerName, occurredAt, reason, location, collectorName,
+                    details, null, null, null);
+        }
+
+        /** The same entry, naming its patient and the lab number of its crossmatch. */
+        public EventView withPatient(String name, String nationalId, String lab) {
+            return new EventView(id, unitId, donationNumber, productCode, eventType, patientId, reservationId,
+                    performedBy, performedByName, secondCheckerId, secondCheckerName, occurredAt, reason, location,
+                    collectorName, details, name, nationalId, lab);
+        }
     }
 
     /** A unit with its live reservation (if any) and its whole trail. */
@@ -95,9 +112,16 @@ public final class BloodBankViews {
      * @param allowed               nothing failed and nothing is pending
      * @param warningReasonRequired a check passed with a warning, so issue needs a
      *                              reason
+     * @param secondCheckMode       the site's second-check setting, so the screen
+     *                              asks for what the server will require
      */
     public record IssueCheck(Long unitId, Long scannedPatientId, boolean allowed, boolean warningReasonRequired,
-            List<SafetyCheck> checks) {
+            List<SafetyCheck> checks, SecondCheckMode secondCheckMode) {
+
+        public IssueCheck(Long unitId, Long scannedPatientId, boolean allowed, boolean warningReasonRequired,
+                List<SafetyCheck> checks) {
+            this(unitId, scannedPatientId, allowed, warningReasonRequired, checks, SecondCheckMode.REQUIRED);
+        }
     }
 
     /**

@@ -377,6 +377,9 @@ const BloodBankStock = () => {
                 )}
                 {tableRows.map((row) => {
                   const unit = byId[row.id];
+                  // DataTable renders its previous rows once after a reload;
+                  // skip any row whose unit is no longer in the list
+                  if (!unit) return null;
                   const names = (ACTIONS[unit.status] || []).filter(
                     (n) => n !== "release" || canRelease,
                   );

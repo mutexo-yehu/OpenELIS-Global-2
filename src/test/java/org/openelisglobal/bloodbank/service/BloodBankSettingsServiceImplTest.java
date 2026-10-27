@@ -18,6 +18,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.openelisglobal.bloodbank.safety.BloodBankRules.RuleAction;
+import org.openelisglobal.bloodbank.safety.SecondCheckMode;
 import org.openelisglobal.bloodbank.service.BloodBankException.Kind;
 import org.openelisglobal.siteinformation.service.SiteInformationService;
 import org.openelisglobal.siteinformation.valueholder.SiteInformation;
@@ -47,6 +48,7 @@ public class BloodBankSettingsServiceImplTest {
         assertTrue(settings.twoSampleGroup());
         assertEquals(RuleAction.WARN, settings.rhdNegPatientRhdPosPlatelets());
         assertEquals(RuleAction.BLOCK, settings.unconfirmedGroupORedCells());
+        assertEquals(SecondCheckMode.REQUIRED, settings.secondCheck());
     }
 
     @Test
@@ -119,6 +121,7 @@ public class BloodBankSettingsServiceImplTest {
         assertEquals("bloodbank.settings.error.value", refusal(Map.of("crossmatchCompatibleValues", " , ")));
         assertEquals("bloodbank.settings.error.range", refusal(Map.of("crossmatchValidHours", 0)));
         assertEquals("bloodbank.settings.error.empty", refusal(Map.of()));
+        assertEquals("bloodbank.settings.error.value", refusal(Map.of("secondCheck", "SOMETIMES")));
     }
 
     private String refusal(Map<String, Object> changes) {
@@ -129,5 +132,17 @@ public class BloodBankSettingsServiceImplTest {
         }
         fail("expected a refusal");
         return null;
+    }
+
+    @Test
+    public void theSecondCheckSettingIsReadAndSaved() {
+        SiteInformation mode = row(BloodBankSettings.SECOND_CHECK, "optional_with_reason");
+        assertEquals(SecondCheckMode.OPTIONAL_WITH_REASON, service.get().secondCheck());
+
+        mode.setValue("whatever");
+        assertEquals(SecondCheckMode.REQUIRED, service.get().secondCheck());
+
+        service.update(Map.of("secondCheck", "collector_confirms"), "1");
+        verify(siteInformationService).update(argThat(s -> s == mode && "COLLECTOR_CONFIRMS".equals(s.getValue())));
     }
 }

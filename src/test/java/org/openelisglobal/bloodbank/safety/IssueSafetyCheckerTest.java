@@ -279,4 +279,67 @@ public class IssueSafetyCheckerTest {
         assertFalse(IssueSafetyChecker.nothingFailed(checks));
         assertEquals(1, checks.stream().filter(c -> c.status() == CheckStatus.FAIL).count());
     }
+
+    private static IssueSnapshot withSecondCheck(SecondCheckOutcome outcome, SecondCheckMode mode, String collector) {
+        IssueSnapshot s = good();
+        return new IssueSnapshot(s.unit(), s.reservation(), PATIENT, s.profile(), s.rules(), outcome, DIN, mode,
+                collector);
+    }
+
+    @Test
+    public void optionalSecondCheckLetsOnePersonIssueOnlyWithAReason() {
+        List<SafetyCheck> checks = IssueSafetyChecker.check(
+                withSecondCheck(SecondCheckOutcome.NOT_PROVIDED, SecondCheckMode.OPTIONAL_WITH_REASON, "Porter"),
+                CLOCK);
+
+        SafetyCheck second = byCode(checks).get("SECOND_PERSON");
+        assertEquals(CheckStatus.WARN, second.status());
+        assertEquals("bloodbank.check.secondPerson.singlePerson", second.messageKey());
+        assertTrue(IssueSafetyChecker.allowsIssue(checks));
+        assertTrue(IssueSafetyChecker.needsWarningReason(checks));
+    }
+
+    @Test
+    public void aRefusedSecondSignInFailsWhateverTheSetting() {
+        for (SecondCheckOutcome outcome : List.of(SecondCheckOutcome.SAME_USER, SecondCheckOutcome.INVALID_CREDENTIALS,
+                SecondCheckOutcome.INACTIVE_USER, SecondCheckOutcome.UNAVAILABLE)) {
+            for (SecondCheckMode mode : SecondCheckMode.values()) {
+                List<SafetyCheck> checks = IssueSafetyChecker.check(withSecondCheck(outcome, mode, "Porter"), CLOCK);
+                assertEquals(outcome + " " + mode, CheckStatus.FAIL, byCode(checks).get("SECOND_PERSON").status());
+            }
+        }
+        List<SafetyCheck> verified = IssueSafetyChecker.check(
+                withSecondCheck(SecondCheckOutcome.VERIFIED, SecondCheckMode.OPTIONAL_WITH_REASON, "Porter"), CLOCK);
+        assertFalse(IssueSafetyChecker.needsWarningReason(verified));
+        assertTrue(IssueSafetyChecker.allowsIssue(verified));
+    }
+
+    @Test
+    public void theNamedCollectorIsTheSecondCheckWhenTheSiteSaysSo() {
+        List<SafetyCheck> named = IssueSafetyChecker.check(withSecondCheck(SecondCheckOutcome.NOT_PROVIDED,
+                SecondCheckMode.COLLECTOR_CONFIRMS, " Porter Example "), CLOCK);
+        SafetyCheck second = byCode(named).get("SECOND_PERSON");
+        assertEquals(CheckStatus.PASS, second.status());
+        assertEquals("bloodbank.check.secondPerson.collectorConfirms", second.messageKey());
+        assertEquals(List.of("Porter Example"), second.args());
+        assertTrue(IssueSafetyChecker.allowsIssue(named));
+
+        // the dry run has no collector yet: pending, never passed
+        List<SafetyCheck> dryRun = IssueSafetyChecker.check(
+                withSecondCheck(SecondCheckOutcome.NOT_PROVIDED, SecondCheckMode.COLLECTOR_CONFIRMS, null), CLOCK);
+        assertEquals(CheckStatus.PENDING, byCode(dryRun).get("SECOND_PERSON").status());
+        assertFalse(IssueSafetyChecker.allowsIssue(dryRun));
+    }
+
+    @Test
+    public void theRequiredSecondCheckIsTheDefault() {
+        IssueSnapshot s = good();
+        IssueSnapshot unset = new IssueSnapshot(s.unit(), s.reservation(), PATIENT, s.profile(), s.rules(),
+                SecondCheckOutcome.NOT_PROVIDED, DIN, null, "Porter");
+        assertEquals(SecondCheckMode.REQUIRED, unset.secondCheckMode());
+        assertEquals(CheckStatus.PENDING, byCode(IssueSafetyChecker.check(unset, CLOCK)).get("SECOND_PERSON").status());
+        assertEquals(SecondCheckMode.REQUIRED, SecondCheckMode.parse("not-a-mode"));
+        assertEquals(SecondCheckMode.REQUIRED, SecondCheckMode.parse(null));
+        assertEquals(SecondCheckMode.COLLECTOR_CONFIRMS, SecondCheckMode.parse(" collector_confirms "));
+    }
 }

@@ -34,7 +34,10 @@ const EMPTY = {
  * Issue at the point of collection. Step 1: scan the bag and the patient's
  * identifier, and run the server's safety checks. A failed check blocks the
  * issue; a warning needs a documented reason. Step 2: ward and collector, then
- * a second, different user re-authenticates. The server repeats every check
+ * the second check the site's setting asks for: a second, different user
+ * re-authenticates (REQUIRED), may do so or one person gives a reason
+ * (OPTIONAL_WITH_REASON), or the named collector confirms (COLLECTOR_CONFIRMS).
+ * The server repeats every check
  * when the issue is submitted, including that the scanned bag is this unit
  * (the match below only guides the user; the server decides).
  */
@@ -85,15 +88,28 @@ const IssueModal = ({ open, unit, onClose, onIssued }) => {
       .finally(() => setBusy(false));
   };
 
-  const reasonRequired = !!check?.warningReasonRequired;
+  // the site's second-check setting, as the server reports it with the checks
+  const mode = check?.secondCheckMode || "REQUIRED";
+  const loginGiven = form.secondCheckerLogin.trim() !== "";
+  const passwordGiven = form.secondCheckerPassword !== "";
+  const secondGiven = loginGiven && passwordGiven;
+  const secondOk =
+    mode === "COLLECTOR_CONFIRMS" ||
+    secondGiven ||
+    (mode === "OPTIONAL_WITH_REASON" && !loginGiven && !passwordGiven);
+  // one person issuing: the server warns, so a reason is due
+  const singlePerson = mode === "OPTIONAL_WITH_REASON" && !secondGiven;
+  const otherWarning = checks.some(
+    (c) => c.status === "WARN" && c.code !== "SECOND_PERSON",
+  );
+  const reasonRequired = otherWarning || singlePerson;
   const canIssue =
     !!check?.allowed &&
     unitMatches &&
     !busy &&
     form.location.trim() !== "" &&
     form.collectorName.trim() !== "" &&
-    form.secondCheckerLogin.trim() !== "" &&
-    form.secondCheckerPassword !== "" &&
+    secondOk &&
     (!reasonRequired || form.warningReason.trim() !== "");
 
   const issue = () => {
@@ -179,19 +195,6 @@ const IssueModal = ({ open, unit, onClose, onIssued }) => {
 
       {check?.allowed && (
         <>
-          {reasonRequired && (
-            <TextArea
-              id="bb-issue-warning-reason"
-              labelText={t("bloodbank.issueModal.warningReason")}
-              helperText={t("bloodbank.issueModal.warningReason.helper")}
-              value={form.warningReason}
-              maxCount={500}
-              enableCounter
-              onChange={(e) =>
-                setForm({ ...form, warningReason: e.target.value })
-              }
-            />
-          )}
           <h5 className="bb-section">{t("bloodbank.issueModal.step2")}</h5>
           <div className="bb-row">
             <TextInput
@@ -210,37 +213,68 @@ const IssueModal = ({ open, unit, onClose, onIssued }) => {
             />
           </div>
           <h5 className="bb-section">{t("bloodbank.issueModal.step3")}</h5>
-          <p className="bb-helper">{t("bloodbank.issueModal.secondHelper")}</p>
-          <div className="bb-row">
-            <TextInput
-              id="bb-issue-second-login"
-              labelText={t("bloodbank.issueModal.secondLogin")}
-              value={form.secondCheckerLogin}
-              autoComplete="off"
+          {mode === "COLLECTOR_CONFIRMS" ? (
+            <p className="bb-helper" data-testid="bb-collector-confirms">
+              {t("bloodbank.issueModal.collectorConfirmsHelper")}
+            </p>
+          ) : (
+            <>
+              <p className="bb-helper">
+                {t(
+                  mode === "OPTIONAL_WITH_REASON"
+                    ? "bloodbank.issueModal.secondOptionalHelper"
+                    : "bloodbank.issueModal.secondHelper",
+                )}
+              </p>
+              <div className="bb-row">
+                <TextInput
+                  id="bb-issue-second-login"
+                  labelText={t("bloodbank.issueModal.secondLogin")}
+                  value={form.secondCheckerLogin}
+                  autoComplete="off"
+                  onChange={(e) =>
+                    setForm({ ...form, secondCheckerLogin: e.target.value })
+                  }
+                />
+                <PasswordInput
+                  id="bb-issue-second-password"
+                  labelText={t("bloodbank.issueModal.secondPassword")}
+                  value={form.secondCheckerPassword}
+                  autoComplete="new-password"
+                  onChange={(e) =>
+                    setForm({ ...form, secondCheckerPassword: e.target.value })
+                  }
+                />
+                <TextInput
+                  id="bb-issue-second-otp"
+                  labelText={t("bloodbank.issueModal.secondOtp")}
+                  value={form.secondCheckerOtp}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  onChange={(e) =>
+                    setForm({ ...form, secondCheckerOtp: e.target.value })
+                  }
+                />
+              </div>
+            </>
+          )}
+          {reasonRequired && (
+            <TextArea
+              id="bb-issue-warning-reason"
+              labelText={t(
+                singlePerson && !otherWarning
+                  ? "bloodbank.issueModal.singlePersonReason"
+                  : "bloodbank.issueModal.warningReason",
+              )}
+              helperText={t("bloodbank.issueModal.warningReason.helper")}
+              value={form.warningReason}
+              maxCount={500}
+              enableCounter
               onChange={(e) =>
-                setForm({ ...form, secondCheckerLogin: e.target.value })
+                setForm({ ...form, warningReason: e.target.value })
               }
             />
-            <PasswordInput
-              id="bb-issue-second-password"
-              labelText={t("bloodbank.issueModal.secondPassword")}
-              value={form.secondCheckerPassword}
-              autoComplete="new-password"
-              onChange={(e) =>
-                setForm({ ...form, secondCheckerPassword: e.target.value })
-              }
-            />
-            <TextInput
-              id="bb-issue-second-otp"
-              labelText={t("bloodbank.issueModal.secondOtp")}
-              value={form.secondCheckerOtp}
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              onChange={(e) =>
-                setForm({ ...form, secondCheckerOtp: e.target.value })
-              }
-            />
-          </div>
+          )}
         </>
       )}
     </Modal>

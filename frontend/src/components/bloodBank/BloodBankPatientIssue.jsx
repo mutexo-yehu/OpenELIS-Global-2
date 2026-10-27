@@ -31,18 +31,35 @@ import {
 } from "./bloodBankFormat";
 import "./BloodBank.css";
 
-const ResultLine = ({ label, result }) => {
-  const intl = useIntl();
-  return (
-    <div className="bb-tile-line">
-      <span>{label}</span>
-      <span>
-        {result
-          ? `${result.value} (${result.accessionNumber}, ${formatInstant(intl, result.collectedAt)})`
-          : intl.formatMessage({ id: "bloodbank.profile.none" })}
-      </span>
-    </div>
-  );
+// label and value side by side, on any screen width
+const ProfileLine = ({ label, children }) => (
+  <>
+    <dt>{label}</dt>
+    <dd>{children}</dd>
+  </>
+);
+
+const resultText = (intl, result) =>
+  result
+    ? `${result.value} (${result.accessionNumber}, ${formatInstant(intl, result.collectedAt)})`
+    : intl.formatMessage({ id: "bloodbank.profile.none" });
+
+/**
+ * Each sample's ABO and RhD, for a discrepancy: the lab sees which sample
+ * says what, rather than one group that may be the wrong one.
+ */
+export const samplesOf = (typings) => {
+  const bySample = new Map();
+  (typings || []).forEach((t) => {
+    const key = t.sampleId || t.accessionNumber;
+    const entry = bySample.get(key) || {
+      accessionNumber: t.accessionNumber,
+      collectedAt: t.collectedAt,
+    };
+    entry[t.kind === "RHD" ? "rhd" : "abo"] = t.value;
+    bySample.set(key, entry);
+  });
+  return Array.from(bySample.values());
 };
 
 export const ProfilePanel = ({ profile }) => {
@@ -72,21 +89,42 @@ export const ProfilePanel = ({ profile }) => {
           })}
         />
       )}
-      <div className="bb-tile-line">
-        <span>{t("bloodbank.field.group")}</span>
-        <span>
-          <strong>{groupText(intl, group.abo, group.rhd)}</strong> {groupTag}{" "}
-          {t("bloodbank.profile.samples", {
-            abo: group.aboSampleCount,
-            rhd: group.rhdSampleCount,
-          })}
-        </span>
-      </div>
-      <ResultLine
-        label={t("bloodbank.profile.antibodyScreen")}
-        result={profile.antibodyScreen}
-      />
-      <ResultLine label={t("bloodbank.profile.dat")} result={profile.dat} />
+      <dl className="bb-profile-grid">
+        <ProfileLine label={t("bloodbank.field.group")}>
+          {group.discrepancy ? (
+            <>
+              {groupTag}
+              <ul className="bb-profile-samples" data-testid="bb-discrepancy">
+                {samplesOf(profile.typings).map((sample) => (
+                  <li key={sample.accessionNumber}>
+                    {t("bloodbank.profile.sampleResult", {
+                      accession: sample.accessionNumber,
+                      when: formatInstant(intl, sample.collectedAt),
+                      abo: sample.abo || "?",
+                      rhd: sample.rhd || "?",
+                    })}
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <>
+              <strong>{groupText(intl, group.abo, group.rhd)}</strong>{" "}
+              {groupTag}{" "}
+              {t("bloodbank.profile.samples", {
+                abo: group.aboSampleCount,
+                rhd: group.rhdSampleCount,
+              })}
+            </>
+          )}
+        </ProfileLine>
+        <ProfileLine label={t("bloodbank.profile.antibodyScreen")}>
+          {resultText(intl, profile.antibodyScreen)}
+        </ProfileLine>
+        <ProfileLine label={t("bloodbank.profile.dat")}>
+          {resultText(intl, profile.dat)}
+        </ProfileLine>
+      </dl>
       <h5 className="bb-section">{t("bloodbank.profile.crossmatches")}</h5>
       {(profile.crossmatches || []).length === 0 ? (
         <p>{t("bloodbank.profile.none")}</p>
@@ -322,8 +360,10 @@ const BloodBankPatientIssue = () => {
               .map((c) => (
                 <Tag
                   key={c.code}
+                  className="bb-check-tag"
                   type={c.status === "FAIL" ? "red" : "warm-gray"}
                   size="sm"
+                  title={messageFor(intl, c.messageKey, c.args)}
                 >
                   {messageFor(intl, c.messageKey, c.args)}
                 </Tag>

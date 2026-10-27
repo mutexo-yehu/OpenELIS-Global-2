@@ -492,4 +492,18 @@
             <delete tableName="menu" schemaName="clinlims"><where>element_id = 'menu_bloodbank'</where></delete>
         </rollback>
     </changeSet>
+
+    <changeSet id="bloodbank-022-setting-second-check" author="openelisglobal">
+        <preConditions onFail="MARK_RAN"><sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.site_information WHERE name = 'bloodbank.secondCheck'</sqlCheck></preConditions>
+        <insert tableName="site_information" schemaName="clinlims">
+            <column name="id" valueSequenceNext="site_information_seq"/>
+            <column name="name" value="bloodbank.secondCheck"/>
+            <column name="description" value="Second check at issue: REQUIRED (second user signs in), OPTIONAL_WITH_REASON or COLLECTOR_CONFIRMS"/>
+            <column name="value" value="REQUIRED"/>
+            <column name="value_type" value="text"/>
+            <column name="domain_id" valueComputed="(SELECT id FROM clinlims.site_information_domain WHERE name = 'bloodBank')"/>
+            <column name="lastupdated" valueDate="now()"/>
+        </insert>
+        <rollback><delete tableName="site_information" schemaName="clinlims"><where>name = 'bloodbank.secondCheck'</where></delete></rollback>
+    </changeSet>
 </databaseChangeLog>
