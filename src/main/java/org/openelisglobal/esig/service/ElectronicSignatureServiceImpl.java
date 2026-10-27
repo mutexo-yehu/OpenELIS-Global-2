@@ -69,6 +69,19 @@ public class ElectronicSignatureServiceImpl extends AuditableBaseObjectServiceIm
     private static final java.util.Set<String> VALID_RECORD_TYPES = java.util.Set.of("RESULT", "RESULT_BATCH",
             "ANALYSIS", "VALIDATION_BATCH", "QC_RESULT", "REPORT");
 
+    /**
+     * The overload without a one-time code, declared here so that it runs in a
+     * transaction: as an interface default it would call the method below on the
+     * target itself, past the transactional proxy.
+     */
+    @Override
+    @Transactional
+    public ElectronicSignature executeSignature(String username, String password, SignatureMeaning meaning,
+            String recordType, Long recordId, String rejectionReason, String clientIp, String userAgent) {
+        return executeSignature(username, password, null, meaning, recordType, recordId, rejectionReason, clientIp,
+                userAgent);
+    }
+
     @Override
     @Transactional
     public ElectronicSignature executeSignature(String username, String password, String otp, SignatureMeaning meaning,
@@ -209,6 +222,14 @@ public class ElectronicSignatureServiceImpl extends AuditableBaseObjectServiceIm
             return false;
         }
         return electronicSignatureDAO.isUserCertified(userId);
+    }
+
+    /** The overload without a one-time code; see executeSignature above. */
+    @Override
+    @Transactional
+    public EsigFirstUseCertification certifyUser(String username, String password, String certificationText,
+            String clientIp, String userAgent) {
+        return certifyUser(username, password, null, certificationText, clientIp, userAgent);
     }
 
     @Override
