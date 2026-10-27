@@ -16,4 +16,13 @@ public interface BloodUnitReservationDAO extends BaseDAO<BloodUnitReservation, L
      * results, with their units.
      */
     List<BloodUnitReservation> getLiveByCrossmatchResultIds(List<Long> crossmatchResultIds);
+
+    /**
+     * The patient's emergency issues, newest first, whatever their status, with
+     * their units and product types.
+     */
+    List<BloodUnitReservation> getEmergencyByPatient(Long patientId);
+
+    /** The reservation, locked for update until the transaction ends. */
+    Optional<BloodUnitReservation> getForUpdate(Long reservationId);
 }

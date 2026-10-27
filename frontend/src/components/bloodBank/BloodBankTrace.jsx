@@ -110,12 +110,45 @@ const IssueChecks = ({ parsed }) => {
   );
 };
 
+/**
+ * An emergency issue's details, as the server writes them: "EMERGENCY issue
+ * before group and crossmatch; requested by: ...; clinical reason: ...; ...",
+ * then the checks in the issue format. Null for any other text.
+ */
+export const splitEmergencyDetails = (details) => {
+  if (!details || !details.startsWith("EMERGENCY ")) return null;
+  const at = details.lastIndexOf("; checks: ");
+  if (at < 0) return { text: details, parsed: null };
+  return {
+    text: details.slice(0, at),
+    parsed: parseIssueChecks(details.slice(at + 2)),
+  };
+};
+
 /** Readable details: known server formats in words, instants in local time. */
 export const DetailsText = ({ details }) => {
   const intl = useIntl();
   if (!details) return null;
   const parsed = parseIssueChecks(details);
   if (parsed) return <IssueChecks parsed={parsed} />;
+  const emergency = splitEmergencyDetails(details);
+  if (emergency) {
+    return (
+      <>
+        <strong className="bb-emergency-text">{emergency.text}</strong>
+        {emergency.parsed && (
+          <>
+            {" · "}
+            <IssueChecks parsed={emergency.parsed} />
+          </>
+        )}
+      </>
+    );
+  }
+  // a retrospective check that found the unit incompatible stays in red
+  if (details.includes(": INCOMPATIBLE; possible transfusion reaction")) {
+    return <strong className="bb-emergency-text">{details}</strong>;
+  }
   const reserved =
     /^crossmatch result \d+ \(([^)]*)\), valid until (\S+)$/.exec(details);
   if (reserved) {

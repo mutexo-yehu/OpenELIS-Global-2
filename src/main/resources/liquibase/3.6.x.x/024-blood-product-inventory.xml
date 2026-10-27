@@ -506,4 +506,70 @@
         </insert>
         <rollback><delete tableName="site_information" schemaName="clinlims"><where>name = 'bloodbank.secondCheck'</where></delete></rollback>
     </changeSet>
+
+    <changeSet id="bloodbank-023-setting-emergency-issue" author="openelisglobal">
+        <preConditions onFail="MARK_RAN"><sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.site_information WHERE name = 'bloodbank.emergencyIssue'</sqlCheck></preConditions>
+        <insert tableName="site_information" schemaName="clinlims">
+            <column name="id" valueSequenceNext="site_information_seq"/>
+            <column name="name" value="bloodbank.emergencyIssue"/>
+            <column name="description" value="Emergency issue of group O red cells and AB plasma before crossmatch: true or false"/>
+            <column name="value" value="true"/>
+            <column name="value_type" value="boolean"/>
+            <column name="domain_id" valueComputed="(SELECT id FROM clinlims.site_information_domain WHERE name = 'bloodBank')"/>
+            <column name="lastupdated" valueDate="now()"/>
+        </insert>
+        <rollback><delete tableName="site_information" schemaName="clinlims"><where>name = 'bloodbank.emergencyIssue'</where></delete></rollback>
+    </changeSet>
+
+    <changeSet id="bloodbank-024-reservation-emergency" author="openelisglobal">
+        <preConditions onFail="MARK_RAN">
+            <not><columnExists tableName="blood_unit_reservation" columnName="emergency" schemaName="clinlims"/></not>
+        </preConditions>
+        <comment>An emergency issue is a reservation created already ISSUED, without a crossmatch: who asked for it and why, and the lab's retrospective group and crossmatch of the unit</comment>
+        <addColumn tableName="blood_unit_reservation" schemaName="clinlims">
+            <column name="emergency" type="BOOLEAN" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="emergency_clinician" type="VARCHAR(120)"/>
+            <column name="emergency_reason" type="VARCHAR(500)"/>
+            <column name="emergency_rhd_pos_ack" type="BOOLEAN" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="retro_result" type="VARCHAR(12)"/>
+            <column name="retro_note" type="VARCHAR(500)"/>
+            <column name="retro_checked_by" type="INT"/>
+            <column name="retro_checked_at" type="TIMESTAMP"/>
+        </addColumn>
+        <sql>ALTER TABLE clinlims.blood_unit_reservation ADD CONSTRAINT chk_blood_reservation_retro
+            CHECK (retro_result IS NULL OR (emergency AND retro_result IN ('COMPATIBLE', 'INCOMPATIBLE')));</sql>
+        <sql>ALTER TABLE clinlims.blood_unit_reservation ADD CONSTRAINT chk_blood_reservation_emergency
+            CHECK (NOT emergency OR (emergency_clinician IS NOT NULL AND emergency_reason IS NOT NULL));</sql>
+        <sql>CREATE INDEX idx_blood_reservation_emergency_patient ON clinlims.blood_unit_reservation (patient_id) WHERE emergency;</sql>
+        <rollback>
+            <sql>DROP INDEX IF EXISTS clinlims.idx_blood_reservation_emergency_patient;</sql>
+            <sql>ALTER TABLE clinlims.blood_unit_reservation DROP CONSTRAINT IF EXISTS chk_blood_reservation_emergency;</sql>
+            <sql>ALTER TABLE clinlims.blood_unit_reservation DROP CONSTRAINT IF EXISTS chk_blood_reservation_retro;</sql>
+            <dropColumn tableName="blood_unit_reservation" schemaName="clinlims">
+                <column name="emergency"/>
+                <column name="emergency_clinician"/>
+                <column name="emergency_reason"/>
+                <column name="emergency_rhd_pos_ack"/>
+                <column name="retro_result"/>
+                <column name="retro_note"/>
+                <column name="retro_checked_by"/>
+                <column name="retro_checked_at"/>
+            </dropColumn>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="bloodbank-025-event-types-emergency" author="openelisglobal">
+        <comment>Two trail entry types: the emergency issue and the retrospective check of its unit</comment>
+        <sql>ALTER TABLE clinlims.blood_unit_event DROP CONSTRAINT IF EXISTS chk_blood_event_type;</sql>
+        <sql>ALTER TABLE clinlims.blood_unit_event ADD CONSTRAINT chk_blood_event_type
+            CHECK (event_type IN ('RECEIVED', 'QUARANTINED', 'RELEASED', 'RESERVED', 'UNRESERVED', 'ISSUED', 'RETURNED',
+                                  'TRANSFUSED', 'REACTION', 'DISCARDED', 'RETURNED_TO_SUPPLIER',
+                                  'EMERGENCY_ISSUED', 'RETROSPECTIVE_CHECK'));</sql>
+        <rollback>
+            <sql>ALTER TABLE clinlims.blood_unit_event DROP CONSTRAINT IF EXISTS chk_blood_event_type;</sql>
+            <sql>ALTER TABLE clinlims.blood_unit_event ADD CONSTRAINT chk_blood_event_type
+                CHECK (event_type IN ('RECEIVED', 'QUARANTINED', 'RELEASED', 'RESERVED', 'UNRESERVED', 'ISSUED', 'RETURNED',
+                                      'TRANSFUSED', 'REACTION', 'DISCARDED', 'RETURNED_TO_SUPPLIER'));</sql>
+        </rollback>
+    </changeSet>
 </databaseChangeLog>

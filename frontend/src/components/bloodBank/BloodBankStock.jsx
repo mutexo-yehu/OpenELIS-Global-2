@@ -449,6 +449,23 @@ const BloodBankStock = () => {
                             </TableCell>
                           );
                         }
+                        // an emergency issue, its retrospective check owed
+                        if (cell.info.header === "status" && unit.emergency) {
+                          return (
+                            <TableCell key={cell.id}>
+                              {cell.value}{" "}
+                              <Tag
+                                type="red"
+                                size="sm"
+                                data-testid="bb-emergency-tag"
+                              >
+                                {intl.formatMessage({
+                                  id: "bloodbank.emergency.tag",
+                                })}
+                              </Tag>
+                            </TableCell>
+                          );
+                        }
                         if (cell.info.header === "actions") {
                           return (
                             <TableCell key={cell.id}>

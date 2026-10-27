@@ -1,8 +1,13 @@
 package org.openelisglobal.bloodbank.service;
 
 import java.util.List;
+import org.openelisglobal.bloodbank.form.BloodBankForms.EmergencyIssueCheckRequest;
+import org.openelisglobal.bloodbank.form.BloodBankForms.EmergencyIssueRequest;
 import org.openelisglobal.bloodbank.form.BloodBankForms.IssueRequest;
+import org.openelisglobal.bloodbank.form.BloodBankForms.RetrospectiveCheckRequest;
 import org.openelisglobal.bloodbank.form.BloodBankViews.CandidateUnit;
+import org.openelisglobal.bloodbank.form.BloodBankViews.EmergencyIssueView;
+import org.openelisglobal.bloodbank.form.BloodBankViews.EmergencyIssues;
 import org.openelisglobal.bloodbank.form.BloodBankViews.IssueCheck;
 import org.openelisglobal.bloodbank.form.BloodBankViews.ReservationView;
 import org.openelisglobal.bloodbank.form.BloodBankViews.UnitActionResult;
@@ -52,4 +57,28 @@ public interface BloodIssueService {
      * entry.
      */
     UnitActionResult transfused(Long unitId, String reactionNote, String sysUserId);
+
+    /**
+     * The emergency issue checklist as it stands, with the second person still to
+     * sign. Writes nothing.
+     */
+    IssueCheck emergencyCheck(Long unitId, EmergencyIssueCheckRequest request);
+
+    /**
+     * Issues group O red cells or group AB plasma to a patient whose group and
+     * crossmatch are not done: refused when the site has turned emergency issue
+     * off, or a field is missing, or any emergency check fails. The normal issue is
+     * not changed by this path. The issue is marked EMERGENCY in the trail and
+     * leaves a retrospective check pending.
+     */
+    UnitActionResult emergencyIssue(Long unitId, EmergencyIssueRequest request, String sysUserId);
+
+    /** The patient's emergency issues and the site's setting. */
+    EmergencyIssues emergencyIssues(Long patientId);
+
+    /**
+     * Records the lab's retrospective group and crossmatch of one emergency unit,
+     * once; INCOMPATIBLE stays as a warning on the patient and in the trail.
+     */
+    EmergencyIssueView retrospectiveCheck(Long reservationId, RetrospectiveCheckRequest request, String sysUserId);
 }

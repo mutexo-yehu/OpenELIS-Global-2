@@ -2,6 +2,7 @@ package org.openelisglobal.bloodbank.controller.rest;
 
 import java.util.List;
 import org.openelisglobal.bloodbank.form.BloodBankViews.CandidateUnit;
+import org.openelisglobal.bloodbank.form.BloodBankViews.EmergencyIssues;
 import org.openelisglobal.bloodbank.form.BloodBankViews.EventView;
 import org.openelisglobal.bloodbank.safety.PatientBloodProfile;
 import org.openelisglobal.bloodbank.service.BloodIssueService;
@@ -43,6 +44,15 @@ public class BloodBankPatientRestController extends BloodBankRestSupport {
     public List<CandidateUnit> candidates(@PathVariable("id") Long id,
             @RequestParam(name = "productType", required = false) Long productType) {
         return issueService.candidates(id, productType);
+    }
+
+    /**
+     * The patient's emergency issues with their retrospective checks, and whether
+     * emergency issue is enabled.
+     */
+    @GetMapping("/{id}/emergency-issues")
+    public EmergencyIssues emergencyIssues(@PathVariable("id") Long id) {
+        return issueService.emergencyIssues(id);
     }
 
     @GetMapping("/{id}/trace")

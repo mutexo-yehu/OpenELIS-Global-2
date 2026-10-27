@@ -197,6 +197,63 @@ const BloodBankService = {
         warningReason: warningReason ? warningReason.trim() : undefined,
       }),
     ),
+  // emergency issue: group O red cells or group AB plasma before group and
+  // crossmatch, then the lab's retrospective check
+  emergencyIssues: (patientId) =>
+    get(`/patients/${patientId}/emergency-issues`),
+  emergencyCheck: (
+    unitId,
+    { patientId, patientIdentifier, unitScan, rhdPositiveAcknowledged },
+  ) =>
+    post(`/units/${unitId}/emergency-issue/check`, {
+      patientId: Number(patientId),
+      patientIdentifier: (patientIdentifier || "").trim(),
+      scannedDonationNumber: (unitScan || "").trim(),
+      rhdPositiveAcknowledged: !!rhdPositiveAcknowledged,
+    }),
+  emergencyIssue: (
+    unitId,
+    {
+      patientId,
+      unitScan,
+      patientIdentifier,
+      location,
+      collectorName,
+      requestingClinician,
+      clinicalReason,
+      rhdPositiveAcknowledged,
+      secondCheckerLogin,
+      secondCheckerPassword,
+      secondCheckerOtp,
+      warningReason,
+    },
+  ) =>
+    post(
+      `/units/${unitId}/emergency-issue`,
+      compact({
+        patientId: Number(patientId),
+        patientIdentifier: patientIdentifier.trim(),
+        scannedDonationNumber: (unitScan || "").trim(),
+        location: location.trim(),
+        collectorName: collectorName.trim(),
+        requestingClinician: requestingClinician.trim(),
+        clinicalReason: clinicalReason.trim(),
+        rhdPositiveAcknowledged: !!rhdPositiveAcknowledged,
+        secondCheckerLogin: secondCheckerLogin.trim(),
+        // the password is sent as typed, never trimmed or stored
+        secondCheckerPassword,
+        secondCheckerOtp: secondCheckerOtp
+          ? secondCheckerOtp.trim()
+          : undefined,
+        warningReason: warningReason ? warningReason.trim() : undefined,
+      }),
+    ),
+  retrospectiveCheck: (reservationId, outcome, note) =>
+    post(`/reservations/${reservationId}/retrospective-check`, {
+      outcome,
+      note: (note || "").trim(),
+    }),
+
   returnUnit: (unitId, reason) =>
     post(`/units/${unitId}/return`, compact({ reason })),
   transfused: (unitId, reactionNote) =>

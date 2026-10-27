@@ -10,12 +10,19 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.openelisglobal.bloodbank.dao.BloodUnitDAO;
 import org.openelisglobal.bloodbank.dao.BloodUnitReservationDAO;
+import org.openelisglobal.bloodbank.form.BloodBankForms.EmergencyIssueCheckRequest;
+import org.openelisglobal.bloodbank.form.BloodBankForms.EmergencyIssueRequest;
 import org.openelisglobal.bloodbank.form.BloodBankForms.IssueRequest;
+import org.openelisglobal.bloodbank.form.BloodBankForms.RetrospectiveCheckRequest;
 import org.openelisglobal.bloodbank.form.BloodBankViews.CandidateUnit;
+import org.openelisglobal.bloodbank.form.BloodBankViews.EmergencyIssueView;
+import org.openelisglobal.bloodbank.form.BloodBankViews.EmergencyIssues;
 import org.openelisglobal.bloodbank.form.BloodBankViews.IssueCheck;
 import org.openelisglobal.bloodbank.form.BloodBankViews.ReservationView;
 import org.openelisglobal.bloodbank.form.BloodBankViews.UnitActionResult;
 import org.openelisglobal.bloodbank.safety.BloodCompatibility;
+import org.openelisglobal.bloodbank.safety.EmergencyIssueChecker;
+import org.openelisglobal.bloodbank.safety.EmergencyIssueChecker.EmergencySnapshot;
 import org.openelisglobal.bloodbank.safety.IssueSafetyChecker;
 import org.openelisglobal.bloodbank.safety.IssueSafetyChecker.IssueSnapshot;
 import org.openelisglobal.bloodbank.safety.IssueSafetyChecker.ReservationFacts;
@@ -30,6 +37,7 @@ import org.openelisglobal.bloodbank.service.BloodUnitTrail.Entry;
 import org.openelisglobal.bloodbank.service.SecondPersonVerifier.Verification;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.EventType;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.ReservationStatus;
+import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.RetrospectiveResult;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.UnitStatus;
 import org.openelisglobal.bloodbank.valueholder.BloodUnit;
 import org.openelisglobal.bloodbank.valueholder.BloodUnitEvent;
@@ -291,6 +299,196 @@ public class BloodIssueServiceImpl implements BloodIssueService {
                     Entry.of(reservation.getPatientId(), reservation.getId(), reactionNote)));
         }
         return result(unit, now, events);
+    }
+
+    // ------------------------------------------------------------------ emergency
+
+    static final int CLINICIAN_MAX = 120;
+    static final int TEXT_MAX = 500;
+
+    static final String RETRO_COMPATIBLE = "retrospective group and crossmatch: COMPATIBLE";
+    static final String RETRO_INCOMPATIBLE = "retrospective group and crossmatch: INCOMPATIBLE; possible transfusion"
+            + " reaction: inform the clinician and follow the reaction procedure";
+
+    @Override
+    @Transactional(readOnly = true)
+    public IssueCheck emergencyCheck(Long unitId, EmergencyIssueCheckRequest request) {
+        BloodBankSettings settings = settingsService.get();
+        requireEmergencyEnabled(settings);
+        if (request == null || request.patientId() == null) {
+            throw new BloodBankException(Kind.INVALID, "bloodbank.emergency.error.patientRequired");
+        }
+        BloodUnit unit = unitDAO.get(unitId).orElseThrow(() -> BloodUnitServiceImpl.notFound(unitId));
+        EmergencySnapshot snapshot = emergencySnapshot(unit, request.patientId(), request.patientIdentifier(),
+                request.scannedDonationNumber(), Boolean.TRUE.equals(request.rhdPositiveAcknowledged()),
+                SecondCheckOutcome.NOT_PROVIDED, null, settings);
+        List<SafetyCheck> checks = EmergencyIssueChecker.check(snapshot, clock);
+        return new IssueCheck(unitId, snapshot.scannedPatientId(), IssueSafetyChecker.nothingFailed(checks),
+                IssueSafetyChecker.needsWarningReason(checks), checks, snapshot.secondCheckMode());
+    }
+
+    @Override
+    public UnitActionResult emergencyIssue(Long unitId, EmergencyIssueRequest request, String sysUserId) {
+        Integer user = BloodUnitServiceImpl.userId(sysUserId);
+        BloodBankSettings settings = settingsService.get();
+        requireEmergencyEnabled(settings);
+        if (request == null || request.patientId() == null) {
+            throw new BloodBankException(Kind.INVALID, "bloodbank.emergency.error.patientRequired");
+        }
+        if (isBlank(request.patientIdentifier())) {
+            throw new BloodBankException(Kind.INVALID, "bloodbank.issue.error.patientIdentifierRequired");
+        }
+        if (isBlank(request.requestingClinician())) {
+            throw new BloodBankException(Kind.INVALID, "bloodbank.emergency.error.clinicianRequired");
+        }
+        if (isBlank(request.clinicalReason())) {
+            throw new BloodBankException(Kind.INVALID, "bloodbank.emergency.error.reasonRequired");
+        }
+        if (isBlank(request.location())) {
+            throw new BloodBankException(Kind.INVALID, "bloodbank.issue.error.locationRequired");
+        }
+        if (isBlank(request.collectorName())) {
+            throw new BloodBankException(Kind.INVALID, "bloodbank.issue.error.collectorRequired");
+        }
+        if (request.requestingClinician().trim().length() > CLINICIAN_MAX) {
+            throw new BloodBankException(Kind.INVALID, "bloodbank.emergency.error.clinicianTooLong",
+                    String.valueOf(CLINICIAN_MAX));
+        }
+        if (request.clinicalReason().trim().length() > TEXT_MAX) {
+            throw new BloodBankException(Kind.INVALID, "bloodbank.error.reasonTooLong", String.valueOf(TEXT_MAX));
+        }
+        unitDAO.get(unitId).orElseThrow(() -> BloodUnitServiceImpl.notFound(unitId));
+        // before the lock: this may ask the identity provider
+        Verification second = secondPersonVerifier.verify(sysUserId, request.secondCheckerLogin(),
+                request.secondCheckerPassword(), request.secondCheckerOtp());
+
+        BloodUnit unit = unitDAO.getForUpdate(unitId).orElseThrow(() -> BloodUnitServiceImpl.notFound(unitId));
+        boolean acknowledged = Boolean.TRUE.equals(request.rhdPositiveAcknowledged());
+        EmergencySnapshot snapshot = emergencySnapshot(unit, request.patientId(), request.patientIdentifier(),
+                request.scannedDonationNumber(), acknowledged, second.outcome(), request.collectorName(), settings);
+        List<SafetyCheck> checks = EmergencyIssueChecker.check(snapshot, clock);
+        if (!IssueSafetyChecker.allowsIssue(checks)) {
+            throw new BloodBankException(Kind.UNSAFE, "bloodbank.emergency.error.checksFailed", checks);
+        }
+        if (IssueSafetyChecker.needsWarningReason(checks) && isBlank(request.warningReason())) {
+            throw new BloodBankException(Kind.UNSAFE, "bloodbank.issue.error.warningReasonRequired", checks);
+        }
+        // the acknowledgement is kept only where it applied: O RhD positive red cells
+        boolean rhdPositiveGiven = acknowledged && EmergencyIssueChecker
+                .needsRhdAcknowledgement(unit.getProductType().getComponentClass(), unit.getRhd());
+        Instant now = clock.instant();
+        BloodUnitReservation reservation = new BloodUnitReservation();
+        reservation.setUnit(unit);
+        reservation.setPatientId(request.patientId());
+        reservation.setStatus(ReservationStatus.ISSUED);
+        reservation.setReservedBy(user);
+        reservation.setReservedAt(Timestamp.from(now));
+        reservation.setIssuedAt(Timestamp.from(now));
+        reservation.setEmergency(true);
+        reservation.setEmergencyClinician(request.requestingClinician().trim());
+        reservation.setEmergencyReason(request.clinicalReason().trim());
+        reservation.setEmergencyRhdPositiveAcknowledged(rhdPositiveGiven);
+        reservation.setSysUserId(String.valueOf(user));
+        reservationDAO.insert(reservation);
+
+        // the one path that takes a unit from AVAILABLE straight to ISSUED
+        unit.setStatus(UnitStatus.ISSUED);
+        unit.setPatientId(request.patientId());
+        unit.setSysUserId(String.valueOf(user));
+        unitDAO.update(unit);
+        BloodUnitEvent event = trail.record(unit, EventType.EMERGENCY_ISSUED, user, now,
+                new Entry(request.patientId(), reservation.getId(), second.verifiedUserId(), request.warningReason(),
+                        request.location(), request.collectorName(),
+                        emergencyDetails(reservation.getEmergencyClinician(), reservation.getEmergencyReason(),
+                                rhdPositiveGiven, checks, snapshot.secondCheckMode())));
+        return result(unit, now, List.of(event));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public EmergencyIssues emergencyIssues(Long patientId) {
+        BloodBankSettings settings = settingsService.get();
+        Function<Integer, String> names = trail.userNames();
+        List<EmergencyIssueView> issues = patientId == null ? List.of()
+                : reservationDAO.getEmergencyByPatient(patientId).stream().map(r -> BloodBankMapper.emergency(r, names))
+                        .toList();
+        return new EmergencyIssues(settings.emergencyIssue(), settings.secondCheck(), issues);
+    }
+
+    @Override
+    public EmergencyIssueView retrospectiveCheck(Long reservationId, RetrospectiveCheckRequest request,
+            String sysUserId) {
+        Integer user = BloodUnitServiceImpl.userId(sysUserId);
+        RetrospectiveResult outcome = request == null ? null : RetrospectiveResult.parse(request.outcome());
+        if (outcome == null) {
+            throw new BloodBankException(Kind.INVALID, "bloodbank.retro.error.outcome");
+        }
+        if (isBlank(request.note())) {
+            throw new BloodBankException(Kind.INVALID, "bloodbank.retro.error.noteRequired");
+        }
+        String note = request.note().trim();
+        if (note.length() > TEXT_MAX) {
+            throw new BloodBankException(Kind.INVALID, "bloodbank.error.reasonTooLong", String.valueOf(TEXT_MAX));
+        }
+        BloodUnitReservation reservation = reservationDAO.getForUpdate(reservationId)
+                .orElseThrow(() -> new BloodBankException(Kind.NOT_FOUND, "bloodbank.error.reservationNotFound",
+                        String.valueOf(reservationId)));
+        if (!reservation.isEmergency()) {
+            throw new BloodBankException(Kind.CONFLICT, "bloodbank.retro.error.notEmergency");
+        }
+        if (reservation.getRetrospectiveResult() != null) {
+            throw new BloodBankException(Kind.CONFLICT, "bloodbank.retro.error.alreadyRecorded",
+                    reservation.getRetrospectiveResult().name());
+        }
+        Instant now = clock.instant();
+        reservation.setRetrospectiveResult(outcome);
+        reservation.setRetrospectiveNote(note);
+        reservation.setRetrospectiveCheckedBy(user);
+        reservation.setRetrospectiveCheckedAt(Timestamp.from(now));
+        reservation.setSysUserId(String.valueOf(user));
+        reservationDAO.update(reservation);
+        trail.record(reservation.getUnit(), EventType.RETROSPECTIVE_CHECK, user, now,
+                new Entry(reservation.getPatientId(), reservation.getId(), null, note, null, null,
+                        outcome == RetrospectiveResult.COMPATIBLE ? RETRO_COMPATIBLE : RETRO_INCOMPATIBLE));
+        return BloodBankMapper.emergency(reservation, trail.userNames());
+    }
+
+    private static void requireEmergencyEnabled(BloodBankSettings settings) {
+        if (!settings.emergencyIssue()) {
+            throw new BloodBankException(Kind.CONFLICT, "bloodbank.emergency.error.disabled");
+        }
+    }
+
+    private EmergencySnapshot emergencySnapshot(BloodUnit unit, Long patientId, String patientIdentifier,
+            String scannedDonationNumber, boolean rhdPositiveAcknowledged, SecondCheckOutcome secondCheck,
+            String collectorName, BloodBankSettings settings) {
+        Long scannedPatientId = isBlank(patientIdentifier) ? null
+                : profileService.resolvePatientIdentifier(patientIdentifier);
+        return new EmergencySnapshot(facts(unit), patientId, scannedPatientId, scannedDonationNumber,
+                rhdPositiveAcknowledged, secondCheck, settings.secondCheck(), collectorName);
+    }
+
+    /**
+     * The emergency issue entry's details: marked EMERGENCY, who asked and why, the
+     * O RhD positive acknowledgement when it applied, then the checks in the same
+     * form as a normal issue, e.g. {@code EMERGENCY issue before group and
+     * crossmatch; requested by: Dr A; clinical reason: haemorrhage; retrospective
+     * group and crossmatch pending; checks: UNIT_STATUS=PASS, ...; secondCheck:
+     * REQUIRED}.
+     */
+    static String emergencyDetails(String clinician, String reason, boolean rhdPositiveGiven, List<SafetyCheck> checks,
+            SecondCheckMode mode) {
+        StringBuilder text = new StringBuilder("EMERGENCY issue before group and crossmatch; requested by: ")
+                .append(oneLine(clinician)).append("; clinical reason: ").append(oneLine(reason));
+        if (rhdPositiveGiven) {
+            text.append("; O RhD positive given: ").append(EmergencyIssueChecker.RHD_POSITIVE_ACKNOWLEDGEMENT);
+        }
+        return text.append("; retrospective group and crossmatch pending; ").append(issueDetails(checks, mode))
+                .toString();
+    }
+
+    private static String oneLine(String text) {
+        return text == null ? "" : text.trim().replaceAll("\\s+", " ");
     }
 
     private BloodUnit issuedUnit(Long unitId) {

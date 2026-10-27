@@ -133,3 +133,21 @@
 .bb-trail-container td {
   vertical-align: top;
 }
+
+/* emergency issue: the banner's unit list, and red text in the trail */
+.bb-emergency-banner .cds--inline-notification {
+  max-width: 100%;
+}
+
+.bb-emergency-list {
+  margin: 0.25rem 0 1rem 1.25rem;
+  list-style: disc;
+}
+
+.bb-emergency-list li {
+  margin-bottom: 0.25rem;
+}
+
+.bb-emergency-text {
+  color: var(--cds-text-error, #da1e28);
+}

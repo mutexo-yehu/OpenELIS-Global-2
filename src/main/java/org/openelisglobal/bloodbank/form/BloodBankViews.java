@@ -7,6 +7,7 @@ import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.Abo;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.ComponentClass;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.EventType;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.ReservationStatus;
+import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.RetrospectiveResult;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.RhD;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.UnitStatus;
 
@@ -36,26 +37,62 @@ public final class BloodBankViews {
      * @param returnWindowMinutes the return window for an ISSUED unit, so the
      *                            screen can say whether a return goes back to
      *                            stock; null otherwise. The return itself decides.
+     * @param emergency           true for an ISSUED unit that went out as an
+     *                            emergency issue; null otherwise
      */
     public record UnitView(Long id, String fhirUuid, String donationNumber, String productCode,
             ProductTypeView productType, Abo abo, RhD rhd, String expiresAt, String collectedAt, String supplier,
             Integer volumeMl, UnitStatus status, String receivedAt, Integer receivedBy, Long patientId, boolean expired,
-            boolean expiringSoon, String issuedAt, Integer returnWindowMinutes) {
+            boolean expiringSoon, String issuedAt, Integer returnWindowMinutes, Boolean emergency) {
 
         public UnitView(Long id, String fhirUuid, String donationNumber, String productCode,
                 ProductTypeView productType, Abo abo, RhD rhd, String expiresAt, String collectedAt, String supplier,
                 Integer volumeMl, UnitStatus status, String receivedAt, Integer receivedBy, Long patientId,
                 boolean expired, boolean expiringSoon) {
             this(id, fhirUuid, donationNumber, productCode, productType, abo, rhd, expiresAt, collectedAt, supplier,
-                    volumeMl, status, receivedAt, receivedBy, patientId, expired, expiringSoon, null, null);
+                    volumeMl, status, receivedAt, receivedBy, patientId, expired, expiringSoon, null, null, null);
         }
 
         /** The same unit, with when it was issued and the return window. */
         public UnitView withIssue(String issued, Integer windowMinutes) {
+            return withIssue(issued, windowMinutes, false);
+        }
+
+        /**
+         * The same unit, with when it was issued, the return window, and whether it was
+         * an emergency issue.
+         */
+        public UnitView withIssue(String issued, Integer windowMinutes, boolean emergencyIssue) {
             return new UnitView(id, fhirUuid, donationNumber, productCode, productType, abo, rhd, expiresAt,
                     collectedAt, supplier, volumeMl, status, receivedAt, receivedBy, patientId, expired, expiringSoon,
-                    issued, windowMinutes);
+                    issued, windowMinutes, emergencyIssue ? Boolean.TRUE : null);
         }
+    }
+
+    /**
+     * One emergency issue to a patient and where its retrospective check stands.
+     *
+     * @param unitStatus              the unit's status now (issued, transfused,
+     *                                back in stock...)
+     * @param rhdPositiveAcknowledged O RhD positive red cells were given with the
+     *                                acknowledgement
+     * @param retrospectiveResult     null while the check is pending
+     */
+    public record EmergencyIssueView(Long reservationId, Long unitId, String donationNumber, String productCode,
+            ProductTypeView productType, Abo abo, RhD rhd, UnitStatus unitStatus, String issuedAt, Integer issuedBy,
+            String issuedByName, String requestingClinician, String clinicalReason, boolean rhdPositiveAcknowledged,
+            RetrospectiveResult retrospectiveResult, String retrospectiveNote, Integer retrospectiveCheckedBy,
+            String retrospectiveCheckedByName, String retrospectiveCheckedAt) {
+    }
+
+    /**
+     * A patient's emergency issues, and whether a new one may be made.
+     *
+     * @param enabled         the site's emergency issue setting
+     * @param secondCheckMode the site's second-check setting, so the screen asks
+     *                        for what the server will require
+     */
+    public record EmergencyIssues(boolean enabled, SecondCheckMode secondCheckMode, List<EmergencyIssueView> issues) {
     }
 
     public record ReservationView(Long id, Long unitId, Long patientId, Long crossmatchResultId,

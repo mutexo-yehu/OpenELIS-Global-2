@@ -15,6 +15,7 @@ import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
 import java.sql.Timestamp;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.ReservationStatus;
+import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.RetrospectiveResult;
 import org.openelisglobal.common.valueholder.BaseObject;
 
 /**
@@ -67,6 +68,37 @@ public class BloodUnitReservation extends BaseObject<Long> {
 
     @Column(name = "closed_at")
     private Timestamp closedAt;
+
+    /**
+     * Issued in an emergency, without a confirmed group or crossmatch: the
+     * reservation is created already ISSUED, and the lab owes a retrospective
+     * check.
+     */
+    @Column(name = "emergency", nullable = false)
+    private boolean emergency;
+
+    @Column(name = "emergency_clinician", length = 120)
+    private String emergencyClinician;
+
+    @Column(name = "emergency_reason", length = 500)
+    private String emergencyReason;
+
+    /** O RhD positive red cells were given with the acknowledgement recorded. */
+    @Column(name = "emergency_rhd_pos_ack", nullable = false)
+    private boolean emergencyRhdPositiveAcknowledged;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "retro_result", length = 12)
+    private RetrospectiveResult retrospectiveResult;
+
+    @Column(name = "retro_note", length = 500)
+    private String retrospectiveNote;
+
+    @Column(name = "retro_checked_by")
+    private Integer retrospectiveCheckedBy;
+
+    @Column(name = "retro_checked_at")
+    private Timestamp retrospectiveCheckedAt;
 
     @Override
     public Long getId() {
@@ -148,5 +180,69 @@ public class BloodUnitReservation extends BaseObject<Long> {
 
     public void setClosedAt(Timestamp closedAt) {
         this.closedAt = closedAt;
+    }
+
+    public boolean isEmergency() {
+        return emergency;
+    }
+
+    public void setEmergency(boolean emergency) {
+        this.emergency = emergency;
+    }
+
+    public String getEmergencyClinician() {
+        return emergencyClinician;
+    }
+
+    public void setEmergencyClinician(String emergencyClinician) {
+        this.emergencyClinician = emergencyClinician;
+    }
+
+    public String getEmergencyReason() {
+        return emergencyReason;
+    }
+
+    public void setEmergencyReason(String emergencyReason) {
+        this.emergencyReason = emergencyReason;
+    }
+
+    public boolean isEmergencyRhdPositiveAcknowledged() {
+        return emergencyRhdPositiveAcknowledged;
+    }
+
+    public void setEmergencyRhdPositiveAcknowledged(boolean emergencyRhdPositiveAcknowledged) {
+        this.emergencyRhdPositiveAcknowledged = emergencyRhdPositiveAcknowledged;
+    }
+
+    public RetrospectiveResult getRetrospectiveResult() {
+        return retrospectiveResult;
+    }
+
+    public void setRetrospectiveResult(RetrospectiveResult retrospectiveResult) {
+        this.retrospectiveResult = retrospectiveResult;
+    }
+
+    public String getRetrospectiveNote() {
+        return retrospectiveNote;
+    }
+
+    public void setRetrospectiveNote(String retrospectiveNote) {
+        this.retrospectiveNote = retrospectiveNote;
+    }
+
+    public Integer getRetrospectiveCheckedBy() {
+        return retrospectiveCheckedBy;
+    }
+
+    public void setRetrospectiveCheckedBy(Integer retrospectiveCheckedBy) {
+        this.retrospectiveCheckedBy = retrospectiveCheckedBy;
+    }
+
+    public Timestamp getRetrospectiveCheckedAt() {
+        return retrospectiveCheckedAt;
+    }
+
+    public void setRetrospectiveCheckedAt(Timestamp retrospectiveCheckedAt) {
+        this.retrospectiveCheckedAt = retrospectiveCheckedAt;
     }
 }

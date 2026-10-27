@@ -74,6 +74,53 @@ public final class BloodBankForms {
         }
     }
 
+    /**
+     * The emergency issue checklist, before anything is written.
+     *
+     * @param patientId               the patient on screen
+     * @param patientIdentifier       scanned from the wristband or request form; it
+     *                                must belong to that patient
+     * @param rhdPositiveAcknowledged for O RhD positive red cells: O RhD negative
+     *                                is not available, or the patient is not a
+     *                                female of childbearing potential
+     */
+    public record EmergencyIssueCheckRequest(Long patientId, String patientIdentifier, String scannedDonationNumber,
+            Boolean rhdPositiveAcknowledged) {
+    }
+
+    /**
+     * An emergency issue: group O red cells or group AB plasma before the patient's
+     * group and crossmatch are done.
+     *
+     * @param requestingClinician who asked for the blood
+     * @param clinicalReason      why it cannot wait for group and crossmatch
+     * @param location            ward or theatre the unit goes to
+     * @param collectorName       who takes the unit from the lab
+     */
+    public record EmergencyIssueRequest(Long patientId, String patientIdentifier, String scannedDonationNumber,
+            String location, String collectorName, String requestingClinician, String clinicalReason,
+            Boolean rhdPositiveAcknowledged, String secondCheckerLogin, String secondCheckerPassword,
+            String secondCheckerOtp, String warningReason) {
+
+        /** Never print the password. */
+        @Override
+        public String toString() {
+            return "EmergencyIssueRequest[patientId=" + patientId + ", patientIdentifier=" + patientIdentifier
+                    + ", scannedDonationNumber=" + scannedDonationNumber + ", location=" + location + ", collectorName="
+                    + collectorName + ", requestingClinician=" + requestingClinician + ", rhdPositiveAcknowledged="
+                    + rhdPositiveAcknowledged + ", secondCheckerLogin=" + secondCheckerLogin + "]";
+        }
+    }
+
+    /**
+     * The lab's retrospective group and crossmatch of an emergency unit.
+     *
+     * @param outcome COMPATIBLE or INCOMPATIBLE
+     * @param note    required: the sample and what was found
+     */
+    public record RetrospectiveCheckRequest(String outcome, String note) {
+    }
+
     public record ReturnRequest(String reason) {
     }
 

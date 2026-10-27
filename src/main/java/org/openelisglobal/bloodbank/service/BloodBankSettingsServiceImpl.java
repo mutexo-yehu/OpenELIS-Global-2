@@ -36,6 +36,7 @@ public class BloodBankSettingsServiceImpl implements BloodBankSettingsService {
         KEYS.put("rhdNegPatientRhdPosPlatelets", BloodBankSettings.RULE_RHD_PLATELETS);
         KEYS.put("unconfirmedGroupORedCells", BloodBankSettings.RULE_UNCONFIRMED_O);
         KEYS.put("secondCheck", BloodBankSettings.SECOND_CHECK);
+        KEYS.put("emergencyIssue", BloodBankSettings.EMERGENCY_ISSUE);
     }
 
     @Autowired
@@ -55,7 +56,9 @@ public class BloodBankSettingsServiceImpl implements BloodBankSettingsService {
                 !"false".equalsIgnoreCase(text(BloodBankSettings.RULE_TWO_SAMPLE, "true")),
                 RuleAction.parse(text(BloodBankSettings.RULE_RHD_PLATELETS, null), d.rhdNegPatientRhdPosPlatelets()),
                 RuleAction.parse(text(BloodBankSettings.RULE_UNCONFIRMED_O, null), d.unconfirmedGroupORedCells()),
-                SecondCheckMode.parse(text(BloodBankSettings.SECOND_CHECK, null)));
+                SecondCheckMode.parse(text(BloodBankSettings.SECOND_CHECK, null)),
+                // like twoSampleGroup: only an explicit "false" turns it off
+                !"false".equalsIgnoreCase(text(BloodBankSettings.EMERGENCY_ISSUE, "true")));
     }
 
     @Override
@@ -101,6 +104,7 @@ public class BloodBankSettingsServiceImpl implements BloodBankSettingsService {
         case "returnWindowMinutes":
             return String.valueOf(wholeNumber(key, value, 0, 1440));
         case "twoSampleGroup":
+        case "emergencyIssue":
             String flag = String.valueOf(value).trim().toLowerCase(Locale.ROOT);
             if (!"true".equals(flag) && !"false".equals(flag)) {
                 throw new BloodBankException(Kind.INVALID, "bloodbank.settings.error.value", key);

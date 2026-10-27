@@ -4,6 +4,7 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.function.Function;
+import org.openelisglobal.bloodbank.form.BloodBankViews.EmergencyIssueView;
 import org.openelisglobal.bloodbank.form.BloodBankViews.EventView;
 import org.openelisglobal.bloodbank.form.BloodBankViews.ReservationView;
 import org.openelisglobal.bloodbank.form.BloodBankViews.UnitView;
@@ -44,6 +45,19 @@ final class BloodBankMapper {
                 reservation.getCrossmatchResultId(), iso(reservation.getCrossmatchValidUntil()),
                 reservation.getStatus(), reservation.getReservedBy(), iso(reservation.getReservedAt()),
                 iso(reservation.getIssuedAt()), iso(reservation.getClosedAt()));
+    }
+
+    /** @param userName system user id → display name */
+    static EmergencyIssueView emergency(BloodUnitReservation reservation, Function<Integer, String> userName) {
+        BloodUnit unit = reservation.getUnit();
+        Integer checkedBy = reservation.getRetrospectiveCheckedBy();
+        return new EmergencyIssueView(reservation.getId(), unit.getId(), unit.getDonationNumber(),
+                unit.getProductCode(), BloodProductCatalogService.view(unit.getProductType()), unit.getAbo(),
+                unit.getRhd(), unit.getStatus(), iso(reservation.getIssuedAt()), reservation.getReservedBy(),
+                userName.apply(reservation.getReservedBy()), reservation.getEmergencyClinician(),
+                reservation.getEmergencyReason(), reservation.isEmergencyRhdPositiveAcknowledged(),
+                reservation.getRetrospectiveResult(), reservation.getRetrospectiveNote(), checkedBy,
+                checkedBy == null ? null : userName.apply(checkedBy), iso(reservation.getRetrospectiveCheckedAt()));
     }
 
     /** @param userName system user id → display name */

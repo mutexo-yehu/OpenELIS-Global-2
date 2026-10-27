@@ -66,7 +66,7 @@ public class BloodBankOrmValidationTest {
             assertNotNull("changelog on the classpath", xml);
             Document document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(xml);
             NodeList changeSets = document.getElementsByTagName("changeSet");
-            assertEquals(22, changeSets.getLength());
+            assertEquals(25, changeSets.getLength());
             for (int i = 0; i < changeSets.getLength(); i++) {
                 Element changeSet = (Element) changeSets.item(i);
                 String id = changeSet.getAttribute("id");

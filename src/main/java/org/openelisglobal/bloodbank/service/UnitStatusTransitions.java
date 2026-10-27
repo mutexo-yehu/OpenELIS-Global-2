@@ -12,7 +12,9 @@ import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.UnitStatus;
  * <li>Receipt makes it AVAILABLE.</li>
  * <li>AVAILABLE and QUARANTINED go both ways; so do AVAILABLE and
  * RESERVED.</li>
- * <li>RESERVED goes to ISSUED.</li>
+ * <li>RESERVED goes to ISSUED. The emergency issue alone takes an AVAILABLE
+ * unit straight to ISSUED, through its own checks
+ * ({@link BloodIssueService#emergencyIssue}); no stock action can.</li>
  * <li>ISSUED goes back to AVAILABLE (returned in time), to DISCARDED (returned
  * late) or to TRANSFUSED.</li>
  * <li>Any state that is not issued or final may go to DISCARDED or

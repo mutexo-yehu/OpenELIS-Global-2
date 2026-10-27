@@ -23,15 +23,21 @@ import org.openelisglobal.BaseWebContextSensitiveTest;
 import org.openelisglobal.bloodbank.dao.BloodProductTypeDAO;
 import org.openelisglobal.bloodbank.dao.BloodUnitDAO;
 import org.openelisglobal.bloodbank.dao.BloodUnitReservationDAO;
+import org.openelisglobal.bloodbank.form.BloodBankForms.EmergencyIssueCheckRequest;
+import org.openelisglobal.bloodbank.form.BloodBankForms.EmergencyIssueRequest;
 import org.openelisglobal.bloodbank.form.BloodBankForms.IssueRequest;
 import org.openelisglobal.bloodbank.form.BloodBankForms.ProductCodeForm;
 import org.openelisglobal.bloodbank.form.BloodBankForms.ReceiveLine;
+import org.openelisglobal.bloodbank.form.BloodBankForms.RetrospectiveCheckRequest;
+import org.openelisglobal.bloodbank.form.BloodBankViews.EmergencyIssueView;
+import org.openelisglobal.bloodbank.form.BloodBankViews.EmergencyIssues;
 import org.openelisglobal.bloodbank.form.BloodBankViews.EventView;
 import org.openelisglobal.bloodbank.form.BloodBankViews.IssueCheck;
 import org.openelisglobal.bloodbank.form.BloodBankViews.ProductTypeView;
 import org.openelisglobal.bloodbank.form.BloodBankViews.ReceiveLineResult;
 import org.openelisglobal.bloodbank.form.BloodBankViews.ReservationView;
 import org.openelisglobal.bloodbank.form.BloodBankViews.UnitActionResult;
+import org.openelisglobal.bloodbank.form.BloodBankViews.UnitView;
 import org.openelisglobal.bloodbank.safety.IssueSafetyChecker.SecondCheckOutcome;
 import org.openelisglobal.bloodbank.safety.PatientBloodProfile;
 import org.openelisglobal.bloodbank.safety.PatientBloodProfile.CrossmatchResult;
@@ -40,6 +46,7 @@ import org.openelisglobal.bloodbank.service.SecondPersonVerifier.Verification;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.Abo;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.EventType;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.ReservationStatus;
+import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.RetrospectiveResult;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.RhD;
 import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.UnitStatus;
 import org.openelisglobal.bloodbank.valueholder.BloodUnit;
@@ -526,5 +533,110 @@ public class BloodBankDatabaseIntegrationTest extends BaseWebContextSensitiveTes
         // receipt names no patient; the other three do
         assertEquals(List.of(EventType.RESERVED, EventType.ISSUED, EventType.RETURNED),
                 traceService.forPatient(grouped.patientId()).stream().map(EventView::eventType).toList());
+    }
+
+    // ------------------------------------------------------------------
+    // emergency issue
+
+    @Test
+    public void anUngroupedPatientGetsGroupORedCellsAndTheLabChecksThemAfterwards() {
+        long patient = patient("BBNIDE" + suffix + ThreadLocalRandom.current().nextInt(1000));
+        String nationalId = jdbcTemplate.queryForObject("SELECT national_id FROM patient WHERE id = ?", String.class,
+                patient);
+        String productCode = mapOwnProductCode();
+        String din = din();
+        ReceiveLineResult received = unitService
+                .receive(List.of(new ReceiveLine(null, din, productCode, "O POS", "2026-11-30", null, null, null)),
+                        TEST_SYS_USER_ID)
+                .get(0);
+        assertTrue(String.valueOf(received.errors()), received.received());
+        Long unitId = received.unitId();
+
+        // the normal issue still refuses it: no reservation, no group, no crossmatch
+        assertFalse(issueService.check(unitId, nationalId, din).allowed());
+        // O RhD positive needs the acknowledgement
+        assertFalse(issueService.emergencyCheck(unitId, new EmergencyIssueCheckRequest(patient, nationalId, din, false))
+                .allowed());
+        IssueCheck dryRun = issueService.emergencyCheck(unitId,
+                new EmergencyIssueCheckRequest(patient, nationalId, din, true));
+        assertTrue(String.valueOf(dryRun.checks()), dryRun.allowed());
+
+        BloodIssueServiceImpl issueTarget = target(issueService, BloodIssueServiceImpl.class);
+        Object realVerifier = ReflectionTestUtils.getField(issueTarget, "secondPersonVerifier");
+        SecondPersonVerifier verifiedAsUser2 = (issuer, login, password,
+                otp) -> "second".equals(login) && "pw".equals(password)
+                        ? new Verification(SecondCheckOutcome.VERIFIED, 2)
+                        : new Verification(SecondCheckOutcome.INVALID_CREDENTIALS, null);
+        ReflectionTestUtils.setField(issueTarget, "secondPersonVerifier", verifiedAsUser2);
+        try {
+            UnitActionResult issued = issueService.emergencyIssue(
+                    unitId, new EmergencyIssueRequest(patient, nationalId, din, "Emergency department",
+                            "Porter Example", "Dr Example", "Massive haemorrhage", true, "second", "pw", null, null),
+                    TEST_SYS_USER_ID);
+            assertEquals(UnitStatus.ISSUED, issued.unit().status());
+        } finally {
+            ReflectionTestUtils.setField(issueTarget, "secondPersonVerifier", realVerifier);
+        }
+
+        // the stock list's Issued tab marks it
+        List<UnitView> issuedUnits = unitService.search(List.of(UnitStatus.ISSUED), null, null, null, null, patient);
+        assertEquals(1, issuedUnits.size());
+        assertEquals(Boolean.TRUE, issuedUnits.get(0).emergency());
+
+        EmergencyIssues pending = issueService.emergencyIssues(patient);
+        assertTrue(pending.enabled());
+        assertEquals(1, pending.issues().size());
+        EmergencyIssueView issue = pending.issues().get(0);
+        assertNull("retrospective check pending", issue.retrospectiveResult());
+        assertTrue(issue.rhdPositiveAcknowledged());
+        assertEquals("Dr Example", issue.requestingClinician());
+        assertEquals("Massive haemorrhage", issue.clinicalReason());
+
+        // the database keeps no emergency issue without who asked and why
+        assertThrows(DataAccessException.class,
+                () -> jdbcTemplate.update("UPDATE blood_unit_reservation SET emergency_clinician = NULL WHERE id = ?",
+                        issue.reservationId()));
+
+        EmergencyIssueView checked = issueService.retrospectiveCheck(issue.reservationId(),
+                new RetrospectiveCheckRequest("INCOMPATIBLE", "Anti-Fya on the pre-transfusion sample"),
+                TEST_SYS_USER_ID);
+        assertEquals(RetrospectiveResult.INCOMPATIBLE, checked.retrospectiveResult());
+        assertThrows(BloodBankException.class, () -> issueService.retrospectiveCheck(issue.reservationId(),
+                new RetrospectiveCheckRequest("COMPATIBLE", "again"), TEST_SYS_USER_ID));
+
+        // it goes on like any issued unit, and the warning stays
+        assertEquals(UnitStatus.TRANSFUSED, issueService.transfused(unitId, null, TEST_SYS_USER_ID).unit().status());
+        assertEquals(RetrospectiveResult.INCOMPATIBLE,
+                issueService.emergencyIssues(patient).issues().get(0).retrospectiveResult());
+
+        List<EventView> trail = traceService.forDonationNumber(din);
+        assertEquals(List.of(EventType.RECEIVED, EventType.EMERGENCY_ISSUED, EventType.RETROSPECTIVE_CHECK,
+                EventType.TRANSFUSED), trail.stream().map(EventView::eventType).toList());
+        EventView emergency = trail.get(1);
+        assertEquals(Integer.valueOf(2), emergency.secondCheckerId());
+        assertEquals("Emergency department", emergency.location());
+        assertEquals(Long.valueOf(patient), emergency.patientId());
+        assertTrue(emergency.details(), emergency.details().startsWith("EMERGENCY issue before group and crossmatch"));
+        assertTrue(emergency.details(), emergency.details().contains("requested by: Dr Example"));
+        assertTrue(emergency.details(), emergency.details().contains("O RhD positive given"));
+        String csv = traceService.toCsv(trail);
+        assertTrue(csv, csv.contains(",EMERGENCY_ISSUED,"));
+        assertTrue(csv, csv.contains("possible transfusion reaction: inform the clinician"));
+    }
+
+    @Test
+    public void theEmergencyIssueSettingIsSeededOnAndTurningItOffRefusesTheIssue() {
+        assertEquals("true", jdbcTemplate.queryForObject(
+                "SELECT value FROM site_information WHERE name = 'bloodbank.emergencyIssue'", String.class));
+        try {
+            assertFalse(settingsService.update(Map.of("emergencyIssue", false), TEST_SYS_USER_ID).emergencyIssue());
+            assertFalse(issueService.emergencyIssues(-1L).enabled());
+            BloodBankException refused = assertThrows(BloodBankException.class,
+                    () -> issueService.emergencyIssue(-1L, new EmergencyIssueRequest(-1L, "X", "X", "ED", "Porter",
+                            "Dr Example", "Haemorrhage", null, null, null, null, null), TEST_SYS_USER_ID));
+            assertEquals("bloodbank.emergency.error.disabled", refused.getErrorCode());
+        } finally {
+            settingsService.update(Map.of("emergencyIssue", true), TEST_SYS_USER_ID);
+        }
     }
 }

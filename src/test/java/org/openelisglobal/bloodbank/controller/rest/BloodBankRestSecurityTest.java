@@ -14,7 +14,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
+import org.openelisglobal.bloodbank.form.BloodBankForms.EmergencyIssueRequest;
 import org.openelisglobal.bloodbank.form.BloodBankForms.IssueRequest;
+import org.openelisglobal.bloodbank.form.BloodBankForms.RetrospectiveCheckRequest;
 import org.openelisglobal.bloodbank.form.BloodBankViews.IssueCheck;
 import org.openelisglobal.bloodbank.safety.SafetyCheck;
 import org.openelisglobal.bloodbank.service.BloodBankException;
@@ -94,10 +96,17 @@ public class BloodBankRestSecurityTest extends SecuritySliceMockMvcTest {
             post("/rest/bloodbank/units/5/discard"), post("/rest/bloodbank/units/5/return-to-supplier"),
             post("/rest/bloodbank/units/5/issue/check"), post("/rest/bloodbank/units/5/issue"),
             post("/rest/bloodbank/units/5/return"), post("/rest/bloodbank/units/5/transfused"),
-            post("/rest/bloodbank/reservations"), post("/rest/bloodbank/reservations/70/release"));
+            post("/rest/bloodbank/reservations"), post("/rest/bloodbank/reservations/70/release"),
+            // emergency issue: the same roles as the normal issue
+            post("/rest/bloodbank/units/5/emergency-issue/check"), post("/rest/bloodbank/units/5/emergency-issue"),
+            get("/rest/bloodbank/patients/501/emergency-issues"));
 
     /** SUPERVISOR: VALIDATION and ADMIN. */
     private static final List<Endpoint> SUPERVISOR = List.of(post("/rest/bloodbank/units/5/release"));
+
+    /** LAB_CHECK: RESULTS and VALIDATION, not ADMIN. */
+    private static final List<Endpoint> LAB_CHECK = List
+            .of(post("/rest/bloodbank/reservations/80/retrospective-check"));
 
     /** ADMIN only. */
     private static final List<Endpoint> ADMIN = List.of(get("/rest/bloodbank/settings"),
@@ -129,7 +138,7 @@ public class BloodBankRestSecurityTest extends SecuritySliceMockMvcTest {
     }
 
     private List<Endpoint> all() {
-        return java.util.stream.Stream.of(BENCH_AND_READ, SUPERVISOR, ADMIN).flatMap(List::stream).toList();
+        return java.util.stream.Stream.of(BENCH_AND_READ, SUPERVISOR, LAB_CHECK, ADMIN).flatMap(List::stream).toList();
     }
 
     @Test
@@ -169,6 +178,56 @@ public class BloodBankRestSecurityTest extends SecuritySliceMockMvcTest {
             assertEquals(endpoint.toString(), 200, status(endpoint, user("validation").roles("VALIDATION")));
             assertTrue(serviceWasCalled());
         }
+    }
+
+    @Test
+    public void theRetrospectiveCheckIsForResultsAndValidationOnly() throws Exception {
+        for (Endpoint endpoint : LAB_CHECK) {
+            for (String refused : List.of("ADMIN", "RECEPTION", "PATHOLOGIST")) {
+                assertEquals(refused + " " + endpoint, 403, status(endpoint, user("u").roles(refused)));
+                verifyZeroInteractions(services());
+            }
+            for (String role : List.of("RESULTS", "VALIDATION")) {
+                reset(services());
+                int status = status(endpoint, user("u").roles(role));
+                assertTrue(role + " " + endpoint + " -> " + status, status >= 200 && status < 300);
+                assertTrue(role + " " + endpoint + " reached a service", serviceWasCalled());
+            }
+        }
+    }
+
+    @Test
+    public void theEmergencyIssueFormReachesTheServiceAndItsRefusalMapsTo422() throws Exception {
+        EmergencyIssueRequest form = new EmergencyIssueRequest(501L, "LAB-1", "=G12349865432100",
+                "Emergency department", "Porter", "Dr Example", "Massive haemorrhage", true, "checker", "pw", null,
+                null);
+        when(issueService.emergencyIssue(5L, form, "10")).thenThrow(
+                new BloodBankException(Kind.UNSAFE, "bloodbank.emergency.error.checksFailed", List.of(SafetyCheck
+                        .fail("EMERGENCY_PRODUCT", "bloodbank.emergency.check.product.notAllowed", "RED_CELLS", "A"))));
+        MvcResult refused = mockMvc.perform(request(HttpMethod.POST, "/rest/bloodbank/units/5/emergency-issue")
+                .session(sessionForSysUser(10)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"patientId\":501,\"patientIdentifier\":\"LAB-1\","
+                        + "\"scannedDonationNumber\":\"=G12349865432100\",\"location\":\"Emergency department\","
+                        + "\"collectorName\":\"Porter\",\"requestingClinician\":\"Dr Example\","
+                        + "\"clinicalReason\":\"Massive haemorrhage\",\"rhdPositiveAcknowledged\":true,"
+                        + "\"secondCheckerLogin\":\"checker\",\"secondCheckerPassword\":\"pw\"}")
+                .with(user("results").roles("RESULTS"))).andReturn();
+
+        assertEquals(422, refused.getResponse().getStatus());
+        String body = refused.getResponse().getContentAsString();
+        assertTrue(body, body.contains("\"code\":\"EMERGENCY_PRODUCT\""));
+        verify(issueService).emergencyIssue(5L, form, "10");
+
+        when(issueService.retrospectiveCheck(80L, new RetrospectiveCheckRequest("INCOMPATIBLE", "anti-K"), "10"))
+                .thenThrow(
+                        new BloodBankException(Kind.CONFLICT, "bloodbank.retro.error.alreadyRecorded", "COMPATIBLE"));
+        MvcResult again = mockMvc
+                .perform(request(HttpMethod.POST, "/rest/bloodbank/reservations/80/retrospective-check")
+                        .session(sessionForSysUser(10)).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outcome\":\"INCOMPATIBLE\",\"note\":\"anti-K\"}")
+                        .with(user("validation").roles("VALIDATION")))
+                .andReturn();
+        assertEquals(409, again.getResponse().getStatus());
     }
 
     @Test

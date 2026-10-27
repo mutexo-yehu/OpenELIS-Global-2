@@ -20,8 +20,9 @@ import org.openelisglobal.bloodbank.valueholder.BloodBankEnums.UnitStatus;
  * the same code.
  *
  * <p>
- * There is no override. Emergency release of uncrossmatched group O units is
- * out of scope.
+ * There is no override here. Emergency issue of group O red cells and group AB
+ * plasma before group and crossmatch is a separate path with its own checks,
+ * {@link EmergencyIssueChecker}; nothing in this class is relaxed for it.
  */
 public final class IssueSafetyChecker {
 

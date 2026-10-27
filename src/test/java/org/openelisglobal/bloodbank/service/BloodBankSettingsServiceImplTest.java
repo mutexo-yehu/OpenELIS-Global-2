@@ -145,4 +145,17 @@ public class BloodBankSettingsServiceImplTest {
         service.update(Map.of("secondCheck", "collector_confirms"), "1");
         verify(siteInformationService).update(argThat(s -> s == mode && "COLLECTOR_CONFIRMS".equals(s.getValue())));
     }
+
+    @Test
+    public void emergencyIssueIsOnByDefaultAndOffOnlyWhenSetToFalse() {
+        assertTrue("missing row", service.get().emergencyIssue());
+        SiteInformation flag = row(BloodBankSettings.EMERGENCY_ISSUE, "FALSE");
+        assertEquals(false, service.get().emergencyIssue());
+        flag.setValue("rubbish");
+        assertTrue(service.get().emergencyIssue());
+
+        service.update(Map.of("emergencyIssue", "True"), "1");
+        verify(siteInformationService).update(argThat(s -> s == flag && "true".equals(s.getValue())));
+        assertEquals("bloodbank.settings.error.value", refusal(Map.of("emergencyIssue", "sometimes")));
+    }
 }

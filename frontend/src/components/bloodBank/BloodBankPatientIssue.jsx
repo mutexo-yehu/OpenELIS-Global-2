@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useContext, useEffect, useState } from "react";
 import {
   Button,
   InlineNotification,
@@ -17,8 +17,12 @@ import {
 import { useIntl } from "react-intl";
 import { useHistory } from "react-router-dom";
 import SearchPatientForm from "../patient/SearchPatientForm";
+import UserSessionDetailsContext from "../../UserSessionDetailsContext";
+import { hasRole, Roles } from "../utils/Utils";
 import BloodBankService from "./BloodBankService";
 import BloodBankPager, { PAGE_SIZES, usePage } from "./BloodBankPager";
+import EmergencyIssueModal from "./EmergencyIssueModal";
+import EmergencyIssuePanel from "./EmergencyIssuePanel";
 import IssueModal from "./IssueModal";
 import ReasonModal from "./ReasonModal";
 import ReserveModal from "./ReserveModal";
@@ -241,6 +245,13 @@ const BloodBankPatientIssue = () => {
   const [reserveUnit, setReserveUnit] = useState(null);
   const [issueUnit, setIssueUnit] = useState(null);
   const [releaseUnit, setReleaseUnit] = useState(null);
+  const [emergency, setEmergency] = useState(null);
+  const [emergencyOpen, setEmergencyOpen] = useState(false);
+  const { userSessionDetails } = useContext(UserSessionDetailsContext) || {};
+  // the retrospective check is lab result work: Results or Validation
+  const canRecordCheck =
+    hasRole(userSessionDetails, Roles.RESULTS) ||
+    hasRole(userSessionDetails, Roles.VALIDATION);
 
   const patientId = patient?.patientPK;
 
@@ -256,11 +267,13 @@ const BloodBankPatientIssue = () => {
       BloodBankService.profile(patientId),
       BloodBankService.candidates(patientId, productType),
       BloodBankService.listUnits({ patientId, status: ["RESERVED"] }),
+      BloodBankService.emergencyIssues(patientId),
     ])
-      .then(([p, c, r]) => {
+      .then(([p, c, r, e]) => {
         setProfile(p);
         setCandidates(c || []);
         setReserved(r || []);
+        setEmergency(e || null);
       })
       .catch((e) => setNotice({ kind: "error", text: errorText(intl, e) }));
   }, [patientId, productType, intl]);
@@ -302,6 +315,7 @@ const BloodBankPatientIssue = () => {
             setProfile(null);
             setCandidates([]);
             setReserved([]);
+            setEmergency(null);
             setNotice(null);
           }}
         >
@@ -314,6 +328,15 @@ const BloodBankPatientIssue = () => {
         >
           {t("bloodbank.action.patientTrail")}
         </Button>
+        {emergency?.enabled && (
+          <Button
+            kind="danger"
+            size="sm"
+            onClick={() => setEmergencyOpen(true)}
+          >
+            {t("bloodbank.emergency.button")}
+          </Button>
+        )}
       </div>
       {notice && (
         <InlineNotification
@@ -324,6 +347,18 @@ const BloodBankPatientIssue = () => {
           onClose={() => setNotice(null)}
         />
       )}
+      <EmergencyIssuePanel
+        issues={emergency?.issues}
+        canRecord={canRecordCheck}
+        onRecorded={(result) =>
+          done(
+            result.retrospectiveResult === "INCOMPATIBLE"
+              ? "bloodbank.retro.done.incompatible"
+              : "bloodbank.retro.done",
+            result,
+          )
+        }
+      />
       <ProfilePanel profile={profile} />
 
       <div className="bb-section">
@@ -415,6 +450,14 @@ const BloodBankPatientIssue = () => {
         onClose={() => setIssueUnit(null)}
         onIssued={() => done("bloodbank.issueModal.done", issueUnit)}
       />
+      {emergencyOpen && (
+        <EmergencyIssueModal
+          open
+          patientId={patientId}
+          onClose={() => setEmergencyOpen(false)}
+          onIssued={(result, unit) => done("bloodbank.emergency.done", unit)}
+        />
+      )}
       <ReasonModal
         open={!!releaseUnit}
         title={

@@ -296,9 +296,10 @@ public class BloodUnitServiceImpl implements BloodUnitService {
         if (view.status() != UnitStatus.ISSUED) {
             return view;
         }
-        String issuedAt = reservationDAO.getForUnit(view.id(), ReservationStatus.ISSUED)
-                .map(r -> BloodBankMapper.iso(r.getIssuedAt())).orElse(null);
-        return view.withIssue(issuedAt, returnWindowMinutes);
+        Optional<BloodUnitReservation> issue = reservationDAO.getForUnit(view.id(), ReservationStatus.ISSUED);
+        String issuedAt = issue.map(r -> BloodBankMapper.iso(r.getIssuedAt())).orElse(null);
+        return view.withIssue(issuedAt, returnWindowMinutes,
+                issue.map(BloodUnitReservation::isEmergency).orElse(false));
     }
 
     @Override

@@ -116,6 +116,25 @@ describe("blood bank pages", () => {
     );
   });
 
+  it("stock tags a unit that went out as an emergency issue", async () => {
+    BloodBankService.listUnits.mockResolvedValue([
+      unit({
+        id: 7,
+        donationNumber: "G123498654327",
+        status: "ISSUED",
+        issuedAt: "2026-10-27T13:00:00Z",
+        returnWindowMinutes: 30,
+        emergency: true,
+      }),
+      unit({ id: 8, donationNumber: "G123498654328", status: "ISSUED" }),
+    ]);
+    renderPage(BloodBankStockPage);
+    expect(await screen.findByText("G123498654327")).toBeInTheDocument();
+    const tags = screen.getAllByTestId("bb-emergency-tag");
+    expect(tags).toHaveLength(1);
+    expect(tags[0]).toHaveTextContent(messages["bloodbank.emergency.tag"]);
+  });
+
   it("receive opens with the scan field focused", () => {
     renderPage(BloodBankReceivePage);
     expect(

@@ -3,6 +3,8 @@ package org.openelisglobal.bloodbank.controller.rest;
 import jakarta.servlet.http.HttpServletRequest;
 import org.openelisglobal.bloodbank.form.BloodBankForms.ReasonRequest;
 import org.openelisglobal.bloodbank.form.BloodBankForms.ReserveRequest;
+import org.openelisglobal.bloodbank.form.BloodBankForms.RetrospectiveCheckRequest;
+import org.openelisglobal.bloodbank.form.BloodBankViews.EmergencyIssueView;
 import org.openelisglobal.bloodbank.form.BloodBankViews.ReservationView;
 import org.openelisglobal.bloodbank.service.BloodIssueService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,5 +41,13 @@ public class BloodBankReservationRestController extends BloodBankRestSupport {
     public ReservationView release(@PathVariable("id") Long id, @RequestBody(required = false) ReasonRequest body,
             HttpServletRequest request) {
         return issueService.unreserve(id, body == null ? null : body.reason(), getSysUserId(request));
+    }
+
+    /** The lab's retrospective group and crossmatch of an emergency unit. */
+    @PostMapping("/{id}/retrospective-check")
+    @PreAuthorize(BloodBankGuards.LAB_CHECK)
+    public EmergencyIssueView retrospectiveCheck(@PathVariable("id") Long id,
+            @RequestBody(required = false) RetrospectiveCheckRequest body, HttpServletRequest request) {
+        return issueService.retrospectiveCheck(id, body, getSysUserId(request));
     }
 }

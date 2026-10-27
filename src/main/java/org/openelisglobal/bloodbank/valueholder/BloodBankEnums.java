@@ -89,8 +89,31 @@ public final class BloodBankEnums {
         ACTIVE, ISSUED, RELEASED, EXPIRED
     }
 
+    /**
+     * EMERGENCY_ISSUED is an issue without a confirmed group or crossmatch;
+     * RETROSPECTIVE_CHECK is the lab's later group and crossmatch of that unit.
+     */
     public enum EventType {
         RECEIVED, QUARANTINED, RELEASED, RESERVED, UNRESERVED, ISSUED, RETURNED, TRANSFUSED, REACTION, DISCARDED,
-        RETURNED_TO_SUPPLIER
+        RETURNED_TO_SUPPLIER, EMERGENCY_ISSUED, RETROSPECTIVE_CHECK
+    }
+
+    /** The lab's retrospective group and crossmatch of an emergency unit. */
+    public enum RetrospectiveResult {
+        COMPATIBLE, INCOMPATIBLE;
+
+        /** Reads "compatible", " INCOMPATIBLE ", or null when it is neither. */
+        public static RetrospectiveResult parse(String text) {
+            if (text == null) {
+                return null;
+            }
+            String value = text.trim().toUpperCase(Locale.ROOT);
+            for (RetrospectiveResult result : values()) {
+                if (result.name().equals(value)) {
+                    return result;
+                }
+            }
+            return null;
+        }
     }
 }

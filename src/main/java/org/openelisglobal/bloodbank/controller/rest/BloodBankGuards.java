@@ -18,8 +18,16 @@ public final class BloodBankGuards {
     /** Stock, unit detail, patient profile, candidates, trail. */
     public static final String READ = "hasAnyRole('RESULTS', 'VALIDATION', 'ADMIN')";
 
-    /** Receive, stock actions, reserve, issue, return, transfused. */
+    /**
+     * Receive, stock actions, reserve, issue, emergency issue, return, transfused.
+     */
     public static final String BENCH = "hasAnyRole('RESULTS', 'VALIDATION', 'ADMIN')";
+
+    /**
+     * Recording the retrospective group and crossmatch of an emergency unit: lab
+     * result work, so Results or Validation.
+     */
+    public static final String LAB_CHECK = "hasAnyRole('RESULTS', 'VALIDATION')";
 
     /** Releasing a unit from quarantine. */
     public static final String SUPERVISOR = "hasAnyRole('VALIDATION', 'ADMIN')";

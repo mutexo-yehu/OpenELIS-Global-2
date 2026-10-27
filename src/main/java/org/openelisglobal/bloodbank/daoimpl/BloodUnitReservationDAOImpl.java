@@ -1,5 +1,6 @@
 package org.openelisglobal.bloodbank.daoimpl;
 
+import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 import org.hibernate.Session;
@@ -50,6 +51,33 @@ public class BloodUnitReservationDAOImpl extends BaseDAOImpl<BloodUnitReservatio
                     .setParameterList("live", List.of(ReservationStatus.ACTIVE, ReservationStatus.ISSUED)).list();
         } catch (RuntimeException e) {
             throw new LIMSRuntimeException("Error reading reservations by crossmatch", e);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<BloodUnitReservation> getEmergencyByPatient(Long patientId) {
+        try {
+            return entityManager.unwrap(Session.class)
+                    .createQuery("FROM BloodUnitReservation r JOIN FETCH r.unit u JOIN FETCH u.productType"
+                            + " WHERE r.patientId = :patientId AND r.emergency = true"
+                            + " ORDER BY r.issuedAt DESC, r.id DESC", BloodUnitReservation.class)
+                    .setParameter("patientId", patientId).list();
+        } catch (RuntimeException e) {
+            throw new LIMSRuntimeException("Error reading emergency issues", e);
+        }
+    }
+
+    @Override
+    public Optional<BloodUnitReservation> getForUpdate(Long reservationId) {
+        try {
+            return entityManager.unwrap(Session.class)
+                    .createQuery("FROM BloodUnitReservation r JOIN FETCH r.unit u JOIN FETCH u.productType"
+                            + " WHERE r.id = :id", BloodUnitReservation.class)
+                    .setParameter("id", reservationId).setLockMode(LockModeType.PESSIMISTIC_WRITE)
+                    .uniqueResultOptional();
+        } catch (RuntimeException e) {
+            throw new LIMSRuntimeException("Error locking blood unit reservation", e);
         }
     }
 }

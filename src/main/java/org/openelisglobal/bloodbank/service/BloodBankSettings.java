@@ -23,11 +23,14 @@ import org.openelisglobal.bloodbank.safety.SecondCheckMode;
  * @param rhdNegPatientRhdPosPlatelets see {@link BloodBankRules}
  * @param unconfirmedGroupORedCells    see {@link BloodBankRules}
  * @param secondCheck                  see {@link SecondCheckMode}
+ * @param emergencyIssue               group O red cells and group AB plasma may
+ *                                     be issued before group and crossmatch,
+ *                                     with a retrospective check
  */
 public record BloodBankSettings(String testAbo, String testRhd, String testAntibodyScreen, String testDat,
         String testCrossmatch, List<String> crossmatchCompatibleValues, int crossmatchValidHours, int expiryWarnHours,
         int returnWindowMinutes, boolean twoSampleGroup, RuleAction rhdNegPatientRhdPosPlatelets,
-        RuleAction unconfirmedGroupORedCells, SecondCheckMode secondCheck) {
+        RuleAction unconfirmedGroupORedCells, SecondCheckMode secondCheck, boolean emergencyIssue) {
 
     public static final String TEST_ABO = "bloodbank.test.abo";
     public static final String TEST_RHD = "bloodbank.test.rhd";
@@ -42,15 +45,27 @@ public record BloodBankSettings(String testAbo, String testRhd, String testAntib
     public static final String RULE_RHD_PLATELETS = "bloodbank.rule.rhdNegPatientRhdPosPlatelets";
     public static final String RULE_UNCONFIRMED_O = "bloodbank.rule.unconfirmedGroupORedCells";
     public static final String SECOND_CHECK = "bloodbank.secondCheck";
+    public static final String EMERGENCY_ISSUE = "bloodbank.emergencyIssue";
 
     /** What applies when a setting row is missing or unreadable. */
     public static final BloodBankSettings DEFAULTS = new BloodBankSettings("", "", "", "", "", List.of("Compatible"),
-            72, 48, 30, true, RuleAction.WARN, RuleAction.BLOCK, SecondCheckMode.REQUIRED);
+            72, 48, 30, true, RuleAction.WARN, RuleAction.BLOCK, SecondCheckMode.REQUIRED, true);
 
     public BloodBankSettings {
         crossmatchCompatibleValues = crossmatchCompatibleValues == null ? List.of()
                 : List.copyOf(crossmatchCompatibleValues);
         secondCheck = secondCheck == null ? SecondCheckMode.REQUIRED : secondCheck;
+    }
+
+    /** Settings with emergency issue at its default, enabled. */
+    public BloodBankSettings(String testAbo, String testRhd, String testAntibodyScreen, String testDat,
+            String testCrossmatch, List<String> crossmatchCompatibleValues, int crossmatchValidHours,
+            int expiryWarnHours, int returnWindowMinutes, boolean twoSampleGroup,
+            RuleAction rhdNegPatientRhdPosPlatelets, RuleAction unconfirmedGroupORedCells,
+            SecondCheckMode secondCheck) {
+        this(testAbo, testRhd, testAntibodyScreen, testDat, testCrossmatch, crossmatchCompatibleValues,
+                crossmatchValidHours, expiryWarnHours, returnWindowMinutes, twoSampleGroup,
+                rhdNegPatientRhdPosPlatelets, unconfirmedGroupORedCells, secondCheck, true);
     }
 
     public BloodBankRules rules() {

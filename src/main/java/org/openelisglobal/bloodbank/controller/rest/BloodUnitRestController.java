@@ -2,6 +2,8 @@ package org.openelisglobal.bloodbank.controller.rest;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
+import org.openelisglobal.bloodbank.form.BloodBankForms.EmergencyIssueCheckRequest;
+import org.openelisglobal.bloodbank.form.BloodBankForms.EmergencyIssueRequest;
 import org.openelisglobal.bloodbank.form.BloodBankForms.IssueCheckRequest;
 import org.openelisglobal.bloodbank.form.BloodBankForms.IssueRequest;
 import org.openelisglobal.bloodbank.form.BloodBankForms.ParseRequest;
@@ -128,6 +130,20 @@ public class BloodUnitRestController extends BloodBankRestSupport {
     public UnitActionResult issue(@PathVariable("id") Long id, @RequestBody(required = false) IssueRequest body,
             HttpServletRequest request) {
         return issueService.issue(id, body, getSysUserId(request));
+    }
+
+    @PostMapping("/{id}/emergency-issue/check")
+    @PreAuthorize(BloodBankGuards.BENCH)
+    public IssueCheck emergencyIssueCheck(@PathVariable("id") Long id,
+            @RequestBody(required = false) EmergencyIssueCheckRequest body) {
+        return issueService.emergencyCheck(id, body);
+    }
+
+    @PostMapping("/{id}/emergency-issue")
+    @PreAuthorize(BloodBankGuards.BENCH)
+    public UnitActionResult emergencyIssue(@PathVariable("id") Long id,
+            @RequestBody(required = false) EmergencyIssueRequest body, HttpServletRequest request) {
+        return issueService.emergencyIssue(id, body, getSysUserId(request));
     }
 
     @PostMapping("/{id}/return")
