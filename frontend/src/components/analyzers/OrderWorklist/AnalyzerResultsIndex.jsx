@@ -12,7 +12,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Column,
+  Grid,
 } from "@carbon/react";
+import PageBreadCrumb from "../../common/PageBreadCrumb";
 import { useIntl } from "react-intl";
 import { getFromOpenElisServer } from "../../utils/Utils";
 import useInAppNavigation from "../../common/useInAppNavigation";
@@ -41,72 +44,88 @@ const AnalyzerResultsIndex = () => {
   }, []);
 
   return (
-    <div className="analyzers-list">
-      <Section level={2} data-testid="analyzer-results-index">
-        <Heading>
-          {intl.formatMessage({ id: "analyzer.results.index.title" })}
-        </Heading>
-        <p>
-          {intl.formatMessage({ id: "analyzer.results.index.description" })}
-        </p>
-        {loading ? (
-          <InlineLoading
-            description={intl.formatMessage({
-              id: "analyzer.results.index.loading",
-            })}
-          />
-        ) : loadFailed ? (
-          <InlineNotification
-            kind="error"
-            lowContrast
-            hideCloseButton
-            title={intl.formatMessage({
-              id: "analyzer.results.index.loadFailed",
-            })}
-          />
-        ) : analyzers.length === 0 ? (
-          <p>{intl.formatMessage({ id: "analyzer.results.index.empty" })}</p>
-        ) : (
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableHeader>
-                    {intl.formatMessage({
-                      id: "analyzer.results.index.column.analyzer",
-                    })}
-                  </TableHeader>
-                  <TableHeader>
-                    {intl.formatMessage({
-                      id: "analyzer.results.index.column.results",
-                    })}
-                  </TableHeader>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {analyzers.map((analyzer) => (
-                  <TableRow key={analyzer.id}>
-                    <TableCell>{analyzer.name}</TableCell>
-                    <TableCell>
-                      <Button
-                        kind="tertiary"
-                        size="sm"
-                        href={resultsHref(analyzer.id)}
-                        onClick={navigate(resultsHref(analyzer.id))}
-                      >
-                        {intl.formatMessage({
-                          id: "analyzer.results.index.view",
-                        })}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
-      </Section>
-    </div>
+    <>
+      <PageBreadCrumb
+        breadcrumbs={[
+          { label: "home.label", link: "/" },
+          { label: "analyzer.navigation.results", isCurrentPage: true },
+        ]}
+      />
+      <div className="pageContent">
+        <Grid>
+          <Column lg={16} md={8} sm={4}>
+            <Section level={2} data-testid="analyzer-results-index">
+              <Heading>
+                {intl.formatMessage({ id: "analyzer.results.index.title" })}
+              </Heading>
+              <p>
+                {intl.formatMessage({
+                  id: "analyzer.results.index.description",
+                })}
+              </p>
+              {loading ? (
+                <InlineLoading
+                  description={intl.formatMessage({
+                    id: "analyzer.results.index.loading",
+                  })}
+                />
+              ) : loadFailed ? (
+                <InlineNotification
+                  kind="error"
+                  lowContrast
+                  hideCloseButton
+                  title={intl.formatMessage({
+                    id: "analyzer.results.index.loadFailed",
+                  })}
+                />
+              ) : analyzers.length === 0 ? (
+                <p>
+                  {intl.formatMessage({ id: "analyzer.results.index.empty" })}
+                </p>
+              ) : (
+                <TableContainer>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableHeader>
+                          {intl.formatMessage({
+                            id: "analyzer.results.index.column.analyzer",
+                          })}
+                        </TableHeader>
+                        <TableHeader>
+                          {intl.formatMessage({
+                            id: "analyzer.results.index.column.results",
+                          })}
+                        </TableHeader>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {analyzers.map((analyzer) => (
+                        <TableRow key={analyzer.id}>
+                          <TableCell>{analyzer.name}</TableCell>
+                          <TableCell>
+                            <Button
+                              kind="tertiary"
+                              size="sm"
+                              href={resultsHref(analyzer.id)}
+                              onClick={navigate(resultsHref(analyzer.id))}
+                            >
+                              {intl.formatMessage({
+                                id: "analyzer.results.index.view",
+                              })}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </Section>
+          </Column>
+        </Grid>
+      </div>
+    </>
   );
 };
 

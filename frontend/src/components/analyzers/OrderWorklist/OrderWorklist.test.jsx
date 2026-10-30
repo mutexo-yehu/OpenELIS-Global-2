@@ -3,6 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import { waitFor } from "@testing-library/dom";
 import userEvent from "@testing-library/user-event";
 import { IntlProvider } from "react-intl";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import messages from "../../../languages/en.json";
@@ -52,7 +53,9 @@ const respondWith = (rows, enabled = true) =>
 const renderPage = () =>
   render(
     <IntlProvider locale="en" messages={messages}>
-      <OrderWorklist />
+      <MemoryRouter>
+        <OrderWorklist />
+      </MemoryRouter>
     </IntlProvider>,
   );
 

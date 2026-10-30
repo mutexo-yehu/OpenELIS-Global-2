@@ -18,6 +18,7 @@ import {
   Tag,
   TextInput,
 } from "@carbon/react";
+import PageBreadCrumb from "../../common/PageBreadCrumb";
 import { Link } from "@carbon/react";
 import { useIntl } from "react-intl";
 import useInAppNavigation from "../../common/useInAppNavigation";
@@ -176,107 +177,129 @@ const OrderWorklist = () => {
   }));
 
   return (
-    <div className="analyzers-list">
-      <Section level={2} data-testid="analyzer-order-worklist">
-        <Heading>
-          {intl.formatMessage({ id: "analyzer.worklist.title" })}
-        </Heading>
-        <p>{intl.formatMessage({ id: "analyzer.worklist.description" })}</p>
-        {!enabled && (
-          <InlineNotification
-            kind="warning"
-            lowContrast
-            hideCloseButton
-            title={intl.formatMessage({ id: "analyzer.worklist.disabled" })}
-          />
-        )}
-        {notice && (
-          <InlineNotification
-            kind={notice.kind}
-            lowContrast
-            title={notice.title}
-            onCloseButtonClick={() => setNotice(null)}
-          />
-        )}
-        <form onSubmit={send} style={{ margin: "1rem 0" }}>
-          <Grid narrow>
-            <Column lg={6} md={4} sm={4}>
-              <TextInput
-                id="worklist-lab-number"
-                labelText={intl.formatMessage({
-                  id: "analyzer.worklist.send.label",
-                })}
-                placeholder={intl.formatMessage({
-                  id: "analyzer.worklist.send.placeholder",
-                })}
-                value={labNumber}
-                onChange={(event) => setLabNumber(event.target.value)}
-              />
-            </Column>
-            <Column lg={2} md={2} sm={4} style={{ alignSelf: "end" }}>
-              <Button
-                type="submit"
-                size="md"
-                disabled={pending || !labNumber.trim()}
-              >
-                {intl.formatMessage({ id: "analyzer.worklist.send.button" })}
-              </Button>
-            </Column>
-          </Grid>
-        </form>
-        {loading ? (
-          <InlineLoading
-            description={intl.formatMessage({
-              id: "analyzer.worklist.loading",
-            })}
-          />
-        ) : loadFailed ? (
-          <InlineNotification
-            kind="error"
-            lowContrast
-            hideCloseButton
-            title={intl.formatMessage({ id: "analyzer.worklist.loadFailed" })}
-          />
-        ) : tableRows.length === 0 ? (
-          <p>{intl.formatMessage({ id: "analyzer.worklist.empty" })}</p>
-        ) : (
-          <DataTable rows={tableRows} headers={headers}>
-            {({
-              rows: dataRows,
-              headers: dataHeaders,
-              getHeaderProps,
-              getRowProps,
-            }) => (
-              <TableContainer>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      {dataHeaders.map((header) => (
-                        <TableHeader
-                          key={header.key}
-                          {...getHeaderProps({ header })}
-                        >
-                          {header.header}
-                        </TableHeader>
-                      ))}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {dataRows.map((row) => (
-                      <TableRow key={row.id} {...getRowProps({ row })}>
-                        {row.cells.map((cell) => (
-                          <TableCell key={cell.id}>{cell.value}</TableCell>
-                        ))}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-          </DataTable>
-        )}
-      </Section>
-    </div>
+    <>
+      <PageBreadCrumb
+        breadcrumbs={[
+          { label: "home.label", link: "/" },
+          { label: "analyzer.navigation.worklist", isCurrentPage: true },
+        ]}
+      />
+      <div className="pageContent">
+        <Grid>
+          <Column lg={16} md={8} sm={4}>
+            <Section level={2} data-testid="analyzer-order-worklist">
+              <Heading>
+                {intl.formatMessage({ id: "analyzer.worklist.title" })}
+              </Heading>
+              <p>
+                {intl.formatMessage({ id: "analyzer.worklist.description" })}
+              </p>
+              {!enabled && (
+                <InlineNotification
+                  kind="warning"
+                  lowContrast
+                  hideCloseButton
+                  title={intl.formatMessage({
+                    id: "analyzer.worklist.disabled",
+                  })}
+                />
+              )}
+              {notice && (
+                <InlineNotification
+                  kind={notice.kind}
+                  lowContrast
+                  title={notice.title}
+                  onCloseButtonClick={() => setNotice(null)}
+                />
+              )}
+              <form onSubmit={send} style={{ margin: "1rem 0" }}>
+                <Grid narrow>
+                  <Column lg={6} md={4} sm={4}>
+                    <TextInput
+                      id="worklist-lab-number"
+                      labelText={intl.formatMessage({
+                        id: "analyzer.worklist.send.label",
+                      })}
+                      placeholder={intl.formatMessage({
+                        id: "analyzer.worklist.send.placeholder",
+                      })}
+                      value={labNumber}
+                      onChange={(event) => setLabNumber(event.target.value)}
+                    />
+                  </Column>
+                  <Column lg={2} md={2} sm={4} style={{ alignSelf: "end" }}>
+                    <Button
+                      type="submit"
+                      size="md"
+                      disabled={pending || !labNumber.trim()}
+                    >
+                      {intl.formatMessage({
+                        id: "analyzer.worklist.send.button",
+                      })}
+                    </Button>
+                  </Column>
+                </Grid>
+              </form>
+              {loading ? (
+                <InlineLoading
+                  description={intl.formatMessage({
+                    id: "analyzer.worklist.loading",
+                  })}
+                />
+              ) : loadFailed ? (
+                <InlineNotification
+                  kind="error"
+                  lowContrast
+                  hideCloseButton
+                  title={intl.formatMessage({
+                    id: "analyzer.worklist.loadFailed",
+                  })}
+                />
+              ) : tableRows.length === 0 ? (
+                <p>{intl.formatMessage({ id: "analyzer.worklist.empty" })}</p>
+              ) : (
+                <DataTable rows={tableRows} headers={headers}>
+                  {({
+                    rows: dataRows,
+                    headers: dataHeaders,
+                    getHeaderProps,
+                    getRowProps,
+                  }) => (
+                    <TableContainer>
+                      <Table>
+                        <TableHead>
+                          <TableRow>
+                            {dataHeaders.map((header) => (
+                              <TableHeader
+                                key={header.key}
+                                {...getHeaderProps({ header })}
+                              >
+                                {header.header}
+                              </TableHeader>
+                            ))}
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {dataRows.map((row) => (
+                            <TableRow key={row.id} {...getRowProps({ row })}>
+                              {row.cells.map((cell) => (
+                                <TableCell key={cell.id}>
+                                  {cell.value}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                </DataTable>
+              )}
+            </Section>
+          </Column>
+        </Grid>
+      </div>
+    </>
   );
 };
 
