@@ -20,6 +20,17 @@ describe("canOpen, with App.jsx's routes", () => {
     expect(canOpen("/PatientResults", scientist)).toBe(true); // Results → By Patient
   });
 
+  test("lets Analyser Import open the analyser results, but not the analyser setup", () => {
+    const technician = user(Roles.ANALYSER_IMPORT);
+    expect(canOpen("/analyzer-results", technician)).toBe(true);
+    expect(canOpen("/AnalyzerResults?id=5", technician)).toBe(true);
+    expect(canOpen("/analyzers", technician)).toBe(false);
+    expect(canOpen("/analyzers/types", technician)).toBe(false);
+    expect(canOpen("/analyzer-results", reception)).toBe(false);
+    expect(canOpen("/analyzers", admin)).toBe(true);
+    expect(canOpen("/analyzer-results", admin)).toBe(true);
+  });
+
   test("ignores the query string and leaves unknown and external links to the server", () => {
     expect(canOpen("/PatientResults?type=patient", scientist)).toBe(true);
     expect(canOpen("/SomeLegacyPage.do", scientist)).toBe(true);

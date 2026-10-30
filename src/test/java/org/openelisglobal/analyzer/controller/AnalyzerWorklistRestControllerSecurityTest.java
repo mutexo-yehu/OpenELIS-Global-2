@@ -19,7 +19,9 @@ import org.openelisglobal.analyzer.service.AnalyzerOrderDispatchService;
 import org.openelisglobal.analyzer.service.AnalyzerOrderDispatchService.EnqueueOutcome;
 import org.openelisglobal.analyzer.service.AnalyzerOrderDispatchService.EnqueueResult;
 import org.openelisglobal.analyzer.service.AnalyzerOrderDispatchView;
+import org.openelisglobal.analyzer.service.AnalyzerService;
 import org.openelisglobal.analyzer.service.AnalyzerWorklistSettings;
+import org.openelisglobal.analyzer.valueholder.Analyzer;
 import org.openelisglobal.common.action.IActionConstants;
 import org.openelisglobal.login.valueholder.UserSessionData;
 import org.openelisglobal.security.SecuritySliceMockMvcTest;
@@ -50,9 +52,12 @@ public class AnalyzerWorklistRestControllerSecurityTest extends SecuritySliceMoc
     @Autowired
     private AnalyzerWorklistSettings settings;
 
+    @Autowired
+    private AnalyzerService analyzerService;
+
     @Before
     public void resetMocks() {
-        reset(dispatchService, settings);
+        reset(dispatchService, settings, analyzerService);
         when(settings.isEnabled()).thenReturn(true);
         when(dispatchService.recent(200)).thenReturn(List.of(new AnalyzerOrderDispatchView("9", LAB_NO, "5",
                 "GeneXpert (mock) - Molecular", "COVID-19 PCR", List.of("94500-6"), "FAILED", 2,
@@ -78,6 +83,47 @@ public class AnalyzerWorklistRestControllerSecurityTest extends SecuritySliceMoc
                 .andExpect(jsonPath("$.data.rows[0].analyzerName").value("GeneXpert (mock) - Molecular"))
                 .andExpect(jsonPath("$.data.rows[0].status").value("FAILED"))
                 .andExpect(jsonPath("$.data.rows[0].lastError").value("HTTP 502: ASTM send failed"));
+    }
+
+    @Test
+    public void analyzersWithoutAuthentication_returns401() throws Exception {
+        mockMvc.perform(get(BASE + "/analyzers")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    public void analyzersWithResultsRole_returns403() throws Exception {
+        mockMvc.perform(get(BASE + "/analyzers").with(user("results").roles("RESULTS")))
+                .andExpect(status().isForbidden());
+        verifyZeroInteractions(analyzerService);
+    }
+
+    @Test
+    public void analyzersWithReceptionRole_returns403() throws Exception {
+        mockMvc.perform(get(BASE + "/analyzers").with(user("reception").roles("RECEPTION")))
+                .andExpect(status().isForbidden());
+        verifyZeroInteractions(analyzerService);
+    }
+
+    @Test
+    public void analyzersWithAnalyserImportRole_returnsActiveOnesByNameWithIdAndNameOnly() throws Exception {
+        when(analyzerService.getAll()).thenReturn(List.of(analyzer("7", "Mindray BC-5380", true),
+                analyzer("8", "Retired Analyser", false), analyzer("5", "GeneXpert (mock) - Molecular", true)));
+
+        mockMvc.perform(get(BASE + "/analyzers").with(user("operator").roles("ANALYSER_IMPORT")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].id").value("5"))
+                .andExpect(jsonPath("$.data[0].name").value("GeneXpert (mock) - Molecular"))
+                .andExpect(jsonPath("$.data[0].length()").value(2)).andExpect(jsonPath("$.data[1].id").value("7"))
+                .andExpect(jsonPath("$.data[1].name").value("Mindray BC-5380"))
+                .andExpect(jsonPath("$.data[1].length()").value(2));
+    }
+
+    @Test
+    public void analyzersWithAdminRole_returnsAnEmptyListWhenNoneAreActive() throws Exception {
+        when(analyzerService.getAll()).thenReturn(List.of(analyzer("8", "Retired Analyser", false)));
+
+        mockMvc.perform(get(BASE + "/analyzers").with(user("admin").roles("ADMIN"))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
     }
 
     @Test
@@ -141,6 +187,14 @@ public class AnalyzerWorklistRestControllerSecurityTest extends SecuritySliceMoc
                 .requestAttr(IActionConstants.USER_SESSION_DATA, sessionFor(17))).andExpect(status().isNotFound());
     }
 
+    private static Analyzer analyzer(String id, String name, boolean active) {
+        Analyzer analyzer = new Analyzer();
+        analyzer.setId(id);
+        analyzer.setName(name);
+        analyzer.setActive(active);
+        return analyzer;
+    }
+
     private static UserSessionData sessionFor(int systemUserId) {
         UserSessionData session = new UserSessionData();
         session.setSytemUserId(systemUserId);
@@ -170,9 +224,14 @@ public class AnalyzerWorklistRestControllerSecurityTest extends SecuritySliceMoc
         }
 
         @Bean
+        AnalyzerService analyzerService() {
+            return mock(AnalyzerService.class);
+        }
+
+        @Bean
         AnalyzerWorklistRestController analyzerWorklistRestController(AnalyzerOrderDispatchService dispatchService,
-                AnalyzerWorklistSettings worklistSettings) {
-            return new AnalyzerWorklistRestController(dispatchService, worklistSettings);
+                AnalyzerWorklistSettings worklistSettings, AnalyzerService analyzerService) {
+            return new AnalyzerWorklistRestController(dispatchService, worklistSettings, analyzerService);
         }
     }
 }

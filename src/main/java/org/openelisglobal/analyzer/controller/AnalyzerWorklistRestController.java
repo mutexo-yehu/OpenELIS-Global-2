@@ -1,13 +1,16 @@
 package org.openelisglobal.analyzer.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.openelisglobal.analyzer.service.AnalyzerOrderDispatchService;
 import org.openelisglobal.analyzer.service.AnalyzerOrderDispatchService.EnqueueResult;
 import org.openelisglobal.analyzer.service.AnalyzerOrderDispatchView;
+import org.openelisglobal.analyzer.service.AnalyzerService;
 import org.openelisglobal.analyzer.service.AnalyzerWorklistSettings;
+import org.openelisglobal.analyzer.valueholder.Analyzer;
 import org.openelisglobal.common.rest.BaseRestController;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -29,11 +32,25 @@ public class AnalyzerWorklistRestController extends BaseRestController {
 
     private final AnalyzerOrderDispatchService dispatchService;
     private final AnalyzerWorklistSettings settings;
+    private final AnalyzerService analyzerService;
 
     public AnalyzerWorklistRestController(AnalyzerOrderDispatchService dispatchService,
-            AnalyzerWorklistSettings settings) {
+            AnalyzerWorklistSettings settings, AnalyzerService analyzerService) {
         this.dispatchService = dispatchService;
         this.settings = settings;
+        this.analyzerService = analyzerService;
+    }
+
+    /**
+     * The active analysers a technician can open results for: id and name only,
+     * nothing about how they are set up.
+     */
+    @GetMapping("/analyzers")
+    public ResponseEntity<Map<String, Object>> analyzers() {
+        List<Map<String, String>> rows = analyzerService.getAll().stream().filter(Analyzer::isActive)
+                .sorted(Comparator.comparing(Analyzer::getName, String.CASE_INSENSITIVE_ORDER))
+                .map(a -> Map.of("id", a.getId(), "name", a.getName())).toList();
+        return ResponseEntity.ok(Map.of("status", "success", "data", rows));
     }
 
     @GetMapping

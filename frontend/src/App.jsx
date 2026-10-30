@@ -65,6 +65,9 @@ const AnalyzersPage = lazyWithRetry(() => import("./pages/AnalyzersPage"));
 const OrderWorklist = lazyWithRetry(
   () => import("./components/analyzers/OrderWorklist/OrderWorklist"),
 );
+const AnalyzerResultsIndex = lazyWithRetry(
+  () => import("./components/analyzers/OrderWorklist/AnalyzerResultsIndex"),
+);
 const AnalyzerTypesPage = lazyWithRetry(
   () => import("./pages/AnalyzerTypesPage"),
 );
@@ -216,7 +219,10 @@ export const ANALYZER_RESULTS_ROLES = [
 // defined, so they had no guard and showed every user screens the server refused.
 export const QC_ROLES = [Roles.GLOBAL_ADMIN, Roles.ANALYSER_IMPORT];
 // The order worklist, like its REST API: ANALYSER_IMPORT or ADMIN
-export const ANALYZER_WORKLIST_ROLES = [Roles.GLOBAL_ADMIN, Roles.ANALYSER_IMPORT];
+export const ANALYZER_WORKLIST_ROLES = [
+  Roles.GLOBAL_ADMIN,
+  Roles.ANALYSER_IMPORT,
+];
 
 export const ANALYZER_SETUP_ROLES = [Roles.GLOBAL_ADMIN];
 
@@ -1476,6 +1482,18 @@ export default function App() {
                     <RouteErrorBoundary {...routeErrorAnalyzers}>
                       <Suspense fallback={null}>
                         <OrderWorklist />
+                      </Suspense>
+                    </RouteErrorBoundary>
+                  )}
+                  role={ANALYZER_WORKLIST_ROLES}
+                />
+                <SecureRoute
+                  path="/analyzer-results"
+                  exact
+                  render={() => (
+                    <RouteErrorBoundary {...routeErrorAnalyzerResults}>
+                      <Suspense fallback={null}>
+                        <AnalyzerResultsIndex />
                       </Suspense>
                     </RouteErrorBoundary>
                   )}
