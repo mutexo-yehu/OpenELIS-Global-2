@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Analyser order worklist: orders queued for analysers that take orders from
+    the LIS, and sent to them through the Analyzer Bridge (POST /api/orders,
+    LOINC codes). One row per sample per analyser. sample_id and analyzer_id are
+    plain ids without foreign keys: a constraint here must never make an order
+    save or an analyser change fail.
+-->
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.8.xsd">
+
+    <changeSet id="analyzer-worklist-001-dispatch" author="openelisglobal">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists tableName="analyzer_order_dispatch" schemaName="clinlims"/></not>
+        </preConditions>
+        <comment>Orders queued for and sent to analysers through the Analyzer Bridge</comment>
+        <createTable tableName="analyzer_order_dispatch" schemaName="clinlims">
+            <column name="id" type="NUMERIC(10,0)"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="sample_id" type="NUMERIC(10,0)"><constraints nullable="false"/></column>
+            <column name="accession_number" type="VARCHAR(50)"><constraints nullable="false"/></column>
+            <column name="analyzer_id" type="NUMERIC(10,0)"><constraints nullable="false"/></column>
+            <column name="test_ids" type="TEXT"><constraints nullable="false"/></column>
+            <column name="test_names" type="TEXT"/>
+            <column name="loinc_codes" type="TEXT"><constraints nullable="false"/></column>
+            <column name="status" type="VARCHAR(10)"><constraints nullable="false"/></column>
+            <column name="attempts" type="INT" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="last_error" type="TEXT"/>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="NOW()"><constraints nullable="false"/></column>
+            <column name="sent_at" type="TIMESTAMP"/>
+            <column name="last_updated" type="TIMESTAMP" defaultValueComputed="NOW()"/>
+        </createTable>
+        <sql>ALTER TABLE clinlims.analyzer_order_dispatch ADD CONSTRAINT chk_analyzer_order_dispatch_status
+            CHECK (status IN ('PENDING', 'SENT', 'FAILED'));</sql>
+        <addUniqueConstraint tableName="analyzer_order_dispatch" schemaName="clinlims" columnNames="sample_id, analyzer_id"
+            constraintName="uq_analyzer_order_dispatch_sample_analyzer"/>
+        <createIndex tableName="analyzer_order_dispatch" schemaName="clinlims" indexName="idx_analyzer_order_dispatch_status">
+            <column name="status"/>
+        </createIndex>
+        <createSequence sequenceName="analyzer_order_dispatch_seq" schemaName="clinlims" startValue="1" incrementBy="1"/>
+        <rollback>
+            <dropSequence sequenceName="analyzer_order_dispatch_seq" schemaName="clinlims"/>
+            <dropTable tableName="analyzer_order_dispatch" schemaName="clinlims"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="analyzer-worklist-002-settings-domain" author="openelisglobal">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.site_information_domain WHERE name = 'analyzerWorklist'</sqlCheck>
+        </preConditions>
+        <insert tableName="site_information_domain" schemaName="clinlims">
+            <column name="id" valueSequenceNext="site_information_domain_seq"/>
+            <column name="name" value="analyzerWorklist"/>
+            <column name="description" value="Analyser order worklist: sending orders to analysers through the Analyzer Bridge"/>
+        </insert>
+        <rollback>
+            <delete tableName="site_information_domain" schemaName="clinlims"><where>name = 'analyzerWorklist'</where></delete>
+        </rollback>
+    </changeSet>
+
+    <!-- Guarded, so a site that already has the setting keeps its value. A missing row counts as on. -->
+    <changeSet id="analyzer-worklist-003-setting-enabled" author="openelisglobal">
+        <preConditions onFail="MARK_RAN"><sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.site_information WHERE name = 'analyzer.worklist.enabled'</sqlCheck></preConditions>
+        <insert tableName="site_information" schemaName="clinlims">
+            <column name="id" valueSequenceNext="site_information_seq"/>
+            <column name="name" value="analyzer.worklist.enabled"/>
+            <column name="description" value="Queue new orders for analysers that take orders, and send them through the Analyzer Bridge"/>
+            <column name="value" value="true"/>
+            <column name="value_type" value="boolean"/>
+            <column name="domain_id" valueComputed="(SELECT id FROM clinlims.site_information_domain WHERE name = 'analyzerWorklist')"/>
+            <column name="lastupdated" valueDate="now()"/>
+        </insert>
+        <rollback><delete tableName="site_information" schemaName="clinlims"><where>name = 'analyzer.worklist.enabled'</where></delete></rollback>
+    </changeSet>
+
+    <changeSet id="analyzer-worklist-004-menu" author="openelisglobal">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM clinlims.menu WHERE element_id = 'menu_analyzers_worklist'</sqlCheck>
+            <sqlCheck expectedResult="1">SELECT COUNT(*) FROM clinlims.menu WHERE element_id = 'menu_analyzers'</sqlCheck>
+        </preConditions>
+        <comment>Analyzers > Order worklist</comment>
+        <insert tableName="menu" schemaName="clinlims">
+            <column name="id" valueSequenceNext="menu_seq"/>
+            <column name="parent_id" valueComputed="(SELECT id FROM clinlims.menu WHERE element_id = 'menu_analyzers')"/>
+            <column name="presentation_order" value="4"/>
+            <column name="element_id" value="menu_analyzers_worklist"/>
+            <column name="action_url" value="/analyzers/worklist"/>
+            <column name="display_key" value="analyzer.navigation.worklist"/>
+            <column name="tool_tip_key" value="analyzer.navigation.worklist"/>
+            <column name="new_window" valueBoolean="false"/>
+            <column name="is_active" valueBoolean="true"/>
+            <column name="hide_in_old_ui" valueBoolean="true"/>
+        </insert>
+        <rollback><delete tableName="menu" schemaName="clinlims"><where>element_id = 'menu_analyzers_worklist'</where></delete></rollback>
+    </changeSet>
+</databaseChangeLog>

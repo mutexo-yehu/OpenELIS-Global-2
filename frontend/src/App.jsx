@@ -62,6 +62,9 @@ import {
 } from "./components/utils/serverConnection";
 
 const AnalyzersPage = lazyWithRetry(() => import("./pages/AnalyzersPage"));
+const OrderWorklist = lazyWithRetry(
+  () => import("./components/analyzers/OrderWorklist/OrderWorklist"),
+);
 const AnalyzerTypesPage = lazyWithRetry(
   () => import("./pages/AnalyzerTypesPage"),
 );
@@ -212,6 +215,8 @@ export const ANALYZER_RESULTS_ROLES = [
 // ANALYSER_IMPORT or ADMIN). These routes named Roles.LAB_SUPERVISOR, which is not
 // defined, so they had no guard and showed every user screens the server refused.
 export const QC_ROLES = [Roles.GLOBAL_ADMIN, Roles.ANALYSER_IMPORT];
+// The order worklist, like its REST API: ANALYSER_IMPORT or ADMIN
+export const ANALYZER_WORKLIST_ROLES = [Roles.GLOBAL_ADMIN, Roles.ANALYSER_IMPORT];
 
 export const ANALYZER_SETUP_ROLES = [Roles.GLOBAL_ADMIN];
 
@@ -1463,6 +1468,18 @@ export default function App() {
                     </RouteErrorBoundary>
                   )}
                   role={ANALYZER_SETUP_ROLES}
+                />
+                <SecureRoute
+                  path="/analyzers/worklist"
+                  exact
+                  render={() => (
+                    <RouteErrorBoundary {...routeErrorAnalyzers}>
+                      <Suspense fallback={null}>
+                        <OrderWorklist />
+                      </Suspense>
+                    </RouteErrorBoundary>
+                  )}
+                  role={ANALYZER_WORKLIST_ROLES}
                 />
                 <SecureRoute
                   path="/analyzers/types"

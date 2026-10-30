@@ -659,6 +659,12 @@ export function buildRoutes() {
       role: [Roles.ANALYSER_IMPORT, Roles.GLOBAL_ADMIN],
     },
     {
+      path: "/analyzers/worklist",
+      exact: true,
+      guarded: true,
+      role: [Roles.GLOBAL_ADMIN, Roles.ANALYSER_IMPORT],
+    },
+    {
       path: "/analyzers/types",
       exact: true,
       guarded: true,
