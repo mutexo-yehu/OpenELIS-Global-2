@@ -222,6 +222,17 @@ public class PatientReportV1PopulatorTest extends BaseWebContextSensitiveTest {
     }
 
     @Test
+    public void aFinalizedResultWithNoReleaseDateIsMarkedAutoValidatedAndOneWithAReleaseDateIsNot() throws Exception {
+        autoValidate("9305", "2026-10-01 10:40:00");
+
+        PatientCILNSPClinical_vreduit report = run();
+
+        assertTrue("finalized with a null released_date", row(report, "9305").isAutoValidated());
+        assertFalse("finalized with a released_date", row(report, "9301").isAutoValidated());
+        assertFalse("not finalized", row(report, "9302").isAutoValidated());
+    }
+
+    @Test
     public void aValidatedResultStillTakesItsTimeAndValidatorFromTheReleaseDate() throws Exception {
         history("9301", "9301", "2026-10-01 10:15:00.400");
         history("9305", "9302", "2026-10-01 11:40:01");

@@ -5981,6 +5981,7 @@
   "report.patient.legend.critical": "critical",
   "report.patient.legend.referred": "referred, result pending",
   "report.patient.legend.confirm": "confirmation test",
+  "report.patient.legend.autoValidated": "validé automatiquement par les règles, sans validateur",
   "report.patient.notAccredited": "Not within the laboratory's accredited scope",
   "report.patient.awaitingValidation": "Awaiting validation",
   "report.patient.autoValidated": "Validé automatiquement",

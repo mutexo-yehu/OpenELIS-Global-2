@@ -238,6 +238,7 @@ public class PatientCILNSPClinical_vreduit extends PatientReport implements IRep
             data.setResult(messages.get("order.status.cancelled"));
         }
         if (released) {
+            data.setAutoValidated(analysis.getReleasedDate() == null);
             Timestamp releaseTime = releaseTime(analysis);
             data.setCompletedTime(reportTime(releaseTime));
             if (!analysis.isReferredOut()) {

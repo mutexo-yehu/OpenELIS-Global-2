@@ -373,6 +373,20 @@ public class PatientResultsPdfTest extends BaseWebContextSensitiveTest {
     }
 
     @Test
+    public void autoValidatedTestsCarryAMarkTheLegendExplainsOnlyWhenOneIsPresent() throws Exception {
+        ClinicalPatientData validated = row(ORDER, "Chemistry", "Glucose", "6.3", null);
+        ClinicalPatientData auto = row(ORDER, "Chemistry", "Vitamin D", "48", null);
+        auto.setAutoValidated(true);
+        String marked = PdfText.of(render(List.of(validated, auto), Map.of(ORDER, order())));
+        String unmarked = PdfText.of(render(List.of(validated), Map.of(ORDER, order())));
+
+        assertTrue(marked, marked.contains("Vitamin D (Serum) (A)"));
+        assertFalse(marked, marked.contains("Glucose (Serum) (A)"));
+        assertTrue(marked, marked.contains("(A) auto-validated by rules"));
+        assertFalse(unmarked, unmarked.contains("(A)"));
+    }
+
+    @Test
     public void lowBarsAreDashedAndHighBarsSolidSoAPhotocopyTellsThemApart() throws Exception {
         String drawn = PdfText
                 .content(render(List.of(row(ORDER, "Chemistry", "Sodium", "128", "B")), Map.of(ORDER, order())), 1);

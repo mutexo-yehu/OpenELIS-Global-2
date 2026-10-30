@@ -82,6 +82,7 @@ final class PatientResultsPdf {
     private static final String DOUBLE_UP = "⇈";
     private static final String DOUBLE_DOWN = "⇊";
     private static final String DAGGER = "†";
+    private static final String AUTO = "(A)";
     private static final String DOT = " · ";
 
     private final Settings settings;
@@ -126,8 +127,8 @@ final class PatientResultsPdf {
                 document.setMargins(SIDE_MARGIN, SIDE_MARGIN, TOP_MARGIN, BOTTOM_MARGIN);
                 document.newPage();
             }
-            pages.startOrder(
-                    new OrderPages(writer, order, rows.get(0), title(order), anyDagger(rows), writer.getPageNumber()));
+            pages.startOrder(new OrderPages(writer, order, rows.get(0), title(order), anyDagger(rows), anyAuto(rows),
+                    writer.getPageNumber()));
             document.setMargins(SIDE_MARGIN, SIDE_MARGIN, TOP_MARGIN + CONTINUATION_HEIGHT, BOTTOM_MARGIN);
             addOrder(document, order, rows);
             start = end;
@@ -142,6 +143,10 @@ final class PatientResultsPdf {
 
     private static boolean anyDagger(List<ClinicalPatientData> rows) {
         return rows.stream().anyMatch(row -> !row.isInAccreditedScope());
+    }
+
+    private static boolean anyAuto(List<ClinicalPatientData> rows) {
+        return rows.stream().anyMatch(ClinicalPatientData::isAutoValidated);
     }
 
     private void addOrder(Document document, PatientReportOrder order, List<ClinicalPatientData> rows) {
@@ -442,6 +447,9 @@ final class PatientResultsPdf {
         String name = PdfReportText.plain(row.getTestName()).trim();
         if (!row.isInAccreditedScope()) {
             name += " " + DAGGER;
+        }
+        if (row.isAutoValidated()) {
+            name += " " + AUTO;
         }
         PdfPCell test = text(name, fonts.regular(8.5f, Color.BLACK), Element.ALIGN_LEFT);
         test.setPaddingLeft(8 + indent);
@@ -784,7 +792,7 @@ final class PatientResultsPdf {
             float left = document.left();
             float right = document.right();
             float base = TOP_MARGIN;
-            String legend = legend(current.dagger);
+            String legend = legend(current.dagger, current.autoValidated);
             float legendSize = 7;
             while (legendSize > 5 && fonts.base(false).getWidthPoint(legend, legendSize) > right - left) {
                 legendSize -= 0.25f;
@@ -831,6 +839,7 @@ final class PatientResultsPdf {
         private final ClinicalPatientData first;
         private final String title;
         private final boolean dagger;
+        private final boolean autoValidated;
         private final int firstPage;
         private final PdfTemplate total;
         private final PdfTemplate stripTotal;
@@ -839,11 +848,12 @@ final class PatientResultsPdf {
         private int lastPage;
 
         OrderPages(PdfWriter writer, PatientReportOrder order, ClinicalPatientData first, String title, boolean dagger,
-                int firstPage) {
+                boolean autoValidated, int firstPage) {
             this.order = order;
             this.first = first;
             this.title = title;
             this.dagger = dagger;
+            this.autoValidated = autoValidated;
             this.firstPage = firstPage;
             this.lastPage = firstPage;
             this.total = writer.getDirectContent().createTemplate(14, 10);
@@ -883,6 +893,15 @@ final class PatientResultsPdf {
                 + messages.get("report.patient.legend.confirm");
         if (dagger) {
             legend += "   " + DAGGER + " " + messages.get("report.patient.notAccredited");
+        }
+        return legend;
+    }
+
+    /** The flag legend, plus the auto-validated line when a row carries it. */
+    String legend(boolean dagger, boolean autoValidated) {
+        String legend = legend(dagger);
+        if (autoValidated) {
+            legend += "   " + AUTO + " " + messages.get("report.patient.legend.autoValidated");
         }
         return legend;
     }

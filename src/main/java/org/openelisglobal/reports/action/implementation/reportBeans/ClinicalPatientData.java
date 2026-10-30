@@ -94,6 +94,7 @@ public final class ClinicalPatientData {
     private String methodName;
     private String performingLabName;
     private boolean inAccreditedScope = true;
+    private boolean autoValidated = false;
     private List<ReportComponentLine> components = new ArrayList<>();
     private ReportCallbackLine callback;
     private String completedTime;
@@ -169,6 +170,7 @@ public final class ClinicalPatientData {
         methodName = data.getMethodName();
         performingLabName = data.getPerformingLabName();
         inAccreditedScope = data.isInAccreditedScope();
+        autoValidated = data.isAutoValidated();
         components = new ArrayList<>(data.getComponents());
         callback = data.getCallback();
         completedTime = data.getCompletedTime();
@@ -787,6 +789,18 @@ public final class ClinicalPatientData {
 
     public void setInAccreditedScope(boolean inAccreditedScope) {
         this.inAccreditedScope = inAccreditedScope;
+    }
+
+    /**
+     * Whether the result was finalized by the auto-validation rules, with no
+     * validator and so no release date.
+     */
+    public boolean isAutoValidated() {
+        return autoValidated;
+    }
+
+    public void setAutoValidated(boolean autoValidated) {
+        this.autoValidated = autoValidated;
     }
 
     /**
