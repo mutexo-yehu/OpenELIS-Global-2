@@ -183,6 +183,61 @@ public class PatientReportV1PopulatorTest extends BaseWebContextSensitiveTest {
                 order.getValidators());
     }
 
+    /**
+     * A result finalized at entry by the auto-validation rules has no release date
+     * (that is how the Validation page's "auto-validated" panel finds it), so the
+     * report takes its time from the completed date and says who "validated" it.
+     */
+    @Test
+    public void anOrderOfAutoValidatedResultsCompletesWhenTheLastWasCompletedAndIsNotLeftBlank() throws Exception {
+        autoValidate("9301", "2026-10-01 10:05:00");
+        autoValidate("9302", null);
+        jdbcTemplate.update("UPDATE clinlims.analysis SET lastupdated = ? WHERE id = 9302",
+                Timestamp.valueOf("2026-10-01 12:30:00"));
+        autoValidate("9305", "2026-10-01 10:40:00");
+
+        PatientCILNSPClinical_vreduit report = run();
+        PatientReportOrder order = report.getReportOrders().get(ORDER);
+
+        assertEquals(time("2026-10-01 10:05:00"), row(report, "9301").getCompletedTime());
+        assertEquals(time("2026-10-01 10:40:00"), row(report, "9305").getCompletedTime());
+        assertEquals("no completed date: the last change stands in", time("2026-10-01 12:30:00"),
+                row(report, "9302").getCompletedTime());
+        assertTrue(order.isComplete());
+        assertEquals(time("2026-10-01 12:30:00"), order.getCompletedTime());
+        assertEquals(List.of("Auto-validated, " + time("2026-10-01 12:30:00")), order.getValidators());
+        assertTrue(PdfText.of(report.renderReport()).contains("Auto-validated, " + time("2026-10-01 12:30:00")));
+    }
+
+    @Test
+    public void anOrderWithAnAutoValidatedAndAValidatedResultNamesBothInTimeOrder() throws Exception {
+        history("9301", "9301", "2026-10-01 10:15:00.400");
+        autoValidate("9305", "2026-10-01 10:05:00");
+
+        PatientReportOrder order = run().getReportOrders().get(ORDER);
+
+        assertEquals(
+                List.of("Auto-validated, " + time("2026-10-01 10:05:00"), "Sarah Chen, " + time("2026-10-01 10:15:00")),
+                order.getValidators());
+    }
+
+    @Test
+    public void aValidatedResultStillTakesItsTimeAndValidatorFromTheReleaseDate() throws Exception {
+        history("9301", "9301", "2026-10-01 10:15:00.400");
+        history("9305", "9302", "2026-10-01 11:40:01");
+        jdbcTemplate.update("UPDATE clinlims.analysis SET completed_date = ? WHERE id IN (9301, 9305)",
+                Timestamp.valueOf("2026-10-01 09:00:00"));
+
+        PatientCILNSPClinical_vreduit report = run();
+
+        assertEquals("the release date, not the completed date", time("2026-10-01 10:15:00"),
+                row(report, "9301").getCompletedTime());
+        assertEquals(time("2026-10-01 11:40:00"), row(report, "9305").getCompletedTime());
+        assertEquals(
+                List.of("Sarah Chen, " + time("2026-10-01 10:15:00"), "Ben Okello, " + time("2026-10-01 11:40:00")),
+                report.getReportOrders().get(ORDER).getValidators());
+    }
+
     @Test
     public void aCorrectedResultNamesTheReportIssuedBeforeTheCorrection() throws Exception {
         assertFalse(run().getReportOrders().get(ORDER).isCorrected());
@@ -437,6 +492,16 @@ public class PatientReportV1PopulatorTest extends BaseWebContextSensitiveTest {
 
     private static String time(String timestamp) {
         return PatientCILNSPClinical_vreduit.reportTime(Timestamp.valueOf(timestamp));
+    }
+
+    /**
+     * Finalized at result entry: no release date, the time the test was completed.
+     */
+    private void autoValidate(String analysisId, String completed) {
+        jdbcTemplate.update(
+                "UPDATE clinlims.analysis SET status_id = 6, released_date = NULL, completed_date = ?"
+                        + " WHERE id = ?",
+                completed == null ? null : Timestamp.valueOf(completed), Integer.valueOf(analysisId));
     }
 
     private void history(String analysisId, String userId, String at) {

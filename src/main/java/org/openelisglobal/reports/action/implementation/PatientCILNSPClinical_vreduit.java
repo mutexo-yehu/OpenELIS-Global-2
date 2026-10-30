@@ -238,11 +238,12 @@ public class PatientCILNSPClinical_vreduit extends PatientReport implements IRep
             data.setResult(messages.get("order.status.cancelled"));
         }
         if (released) {
-            data.setCompletedTime(reportTime(analysis.getReleasedDate()));
+            Timestamp releaseTime = releaseTime(analysis);
+            data.setCompletedTime(reportTime(releaseTime));
             if (!analysis.isReferredOut()) {
                 work.claimableTestIds.add(analysis.getTest().getId());
-                if (analysis.getReleasedDate() != null) {
-                    LocalDate day = analysis.getReleasedDate().toLocalDateTime().toLocalDate();
+                if (releaseTime != null) {
+                    LocalDate day = releaseTime.toLocalDateTime().toLocalDate();
                     if (work.releaseDay == null || day.isAfter(work.releaseDay)) {
                         work.releaseDay = day;
                     }
@@ -359,15 +360,15 @@ public class PatientCILNSPClinical_vreduit extends PatientReport implements IRep
         Map<String, Timestamp> latestByValidator = new LinkedHashMap<>();
         Timestamp lastRelease = null;
         for (Analysis analysis : work.analyses) {
-            Timestamp released = analysis.getReleasedDate();
-            if (released == null || !SpringContext.getBean(IStatusService.class)
-                    .matches(analysisService.getStatusId(analysis), AnalysisStatus.Finalized)) {
+            Timestamp released = releaseTime(analysis);
+            if (released == null || !isFinalized(analysis)) {
                 continue;
             }
             if (lastRelease == null || released.after(lastRelease)) {
                 lastRelease = released;
             }
-            String validator = validatorName(analysis);
+            String validator = analysis.getReleasedDate() == null ? messages.get("report.patient.autoValidated")
+                    : validatorName(analysis);
             if (validator != null) {
                 latestByValidator.merge(validator, released, (a, b) -> a.after(b) ? a : b);
             }
@@ -380,6 +381,28 @@ public class PatientCILNSPClinical_vreduit extends PatientReport implements IRep
         }
         order.setValidators(lines);
         order.setCompletedTime(work.pending ? null : reportTime(lastRelease));
+    }
+
+    private boolean isFinalized(Analysis analysis) {
+        return SpringContext.getBean(IStatusService.class).matches(analysisService.getStatusId(analysis),
+                AnalysisStatus.Finalized);
+    }
+
+    /**
+     * When the analysis counts as released on the report. A validator's release
+     * stamps the release date. A result finalized at entry by the auto-validation
+     * rules has none (the release date is what tells the two apart elsewhere), so
+     * the time it was completed stands in, or failing that the last time the record
+     * changed. An analysis that is not finalized has no release time.
+     */
+    private Timestamp releaseTime(Analysis analysis) {
+        if (analysis.getReleasedDate() != null) {
+            return analysis.getReleasedDate();
+        }
+        if (!isFinalized(analysis)) {
+            return null;
+        }
+        return analysis.getCompletedDate() != null ? analysis.getCompletedDate() : analysis.getLastupdated();
     }
 
     private String validatorName(Analysis analysis) {

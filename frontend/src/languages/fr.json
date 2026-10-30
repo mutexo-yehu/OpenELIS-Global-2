@@ -5983,6 +5983,7 @@
   "report.patient.legend.confirm": "confirmation test",
   "report.patient.notAccredited": "Not within the laboratory's accredited scope",
   "report.patient.awaitingValidation": "Awaiting validation",
+  "report.patient.autoValidated": "Validé automatiquement",
   "report.patient.performedBy": "Réalisé par {0}",
   "report.patient.accred.notesLine": "Tests on this report are accredited by: {0}.",
   "report.patient.callback.line": "Callback: {0}, {1}, by {2}. {3}.",

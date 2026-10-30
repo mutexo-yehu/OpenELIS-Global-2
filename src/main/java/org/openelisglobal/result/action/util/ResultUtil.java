@@ -338,7 +338,7 @@ public class ResultUtil {
         for (TestResultItem testResultItem : actionDataSet.getModifiedItems()) {
 
             Analysis analysis = resolveModifiedAnalysis(actionDataSet, testResultItem.getAnalysisId());
-            setStatusAndRelease(analysis, getStatusForTestResult(testResultItem, alwaysValidate, analysis));
+            analysis.setStatusId(getStatusForTestResult(testResultItem, alwaysValidate, analysis));
             analysis.setSysUserId(ControllerUtills.getSysUserId(request));
             if (!GenericValidator.isBlankOrNull(testResultItem.getTestMethod())) {
                 analysis.setMethod(methodService.get(testResultItem.getTestMethod()));
@@ -633,24 +633,6 @@ public class ResultUtil {
             } catch (ParseException e) {
                 LogEvent.logDebug(e);
             }
-        }
-    }
-
-    /**
-     * Sets the status a saved result earned. When that status is Finalized (the
-     * result was released at entry without a validator) the release time is stamped
-     * the same way a manual validation stamps it; the patient report reads it for
-     * "Completed" and "Validated and released by".
-     */
-    public static void setStatusAndRelease(Analysis analysis, String statusId) {
-        setStatusAndRelease(analysis, statusId, SpringContext.getBean(IStatusService.class),
-                new Timestamp(System.currentTimeMillis()));
-    }
-
-    static void setStatusAndRelease(Analysis analysis, String statusId, IStatusService statusService, Timestamp now) {
-        analysis.setStatusId(statusId);
-        if (statusService.matches(statusId, AnalysisStatus.Finalized)) {
-            analysis.setReleasedDate(now);
         }
     }
 

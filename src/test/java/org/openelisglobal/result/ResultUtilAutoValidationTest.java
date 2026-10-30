@@ -1,7 +1,10 @@
 package org.openelisglobal.result;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
+import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
 import org.openelisglobal.BaseWebContextSensitiveTest;
@@ -10,8 +13,11 @@ import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.services.IStatusService;
 import org.openelisglobal.common.services.StatusService.AnalysisStatus;
 import org.openelisglobal.result.action.util.ResultUtil;
+import org.openelisglobal.result.action.util.ResultsUpdateDataSet;
+import org.openelisglobal.resultvalidation.bean.AnalysisItem;
 import org.openelisglobal.test.beanItems.TestResultItem;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 /**
  * OGC-1226 (FR-7) — automated validation obeys the Clear lane's rule: a result
@@ -27,6 +33,12 @@ public class ResultUtilAutoValidationTest extends BaseWebContextSensitiveTest {
 
     @Autowired
     private IStatusService statusService;
+
+    @Autowired
+    private org.openelisglobal.sample.service.SampleService sampleService;
+
+    @Autowired
+    private org.openelisglobal.resultvalidation.util.ResultsValidationUtility validationUtility;
 
     @Autowired
     private org.openelisglobal.typeoftestresult.service.TypeOfTestResultService typeOfTestResultService;
@@ -98,6 +110,30 @@ public class ResultUtilAutoValidationTest extends BaseWebContextSensitiveTest {
         savedBefore.setRevision("1");
         assertEquals("a second save is a modification", status(AnalysisStatus.TechnicalAcceptance),
                 ResultUtil.getStatusForTestResult(entered("100", "N", "10.5"), false, savedBefore));
+    }
+
+    /**
+     * The Validation page finds auto-validated results by their missing release
+     * date (OGC-1030), so a result finalized at entry must be saved without one.
+     */
+    @Test
+    public void aResultFinalizedAtEntryIsSavedWithoutAReleaseDateAndListedAsAutoValidated() {
+        ResultsUpdateDataSet dataSet = new ResultsUpdateDataSet("1");
+        TestResultItem savedItem = entered("100", "N", "10.5");
+        savedItem.setAccessionNumber("VAL-BR-001");
+        dataSet.getModifiedItems().add(savedItem);
+
+        ResultUtil.createResultsFromItems(dataSet, false, false, false, "", new MockHttpServletRequest());
+
+        Analysis saved = dataSet.findModifiedAnalysis("100");
+        assertEquals(status(AnalysisStatus.Finalized), saved.getStatusId());
+        assertNull("no validator released it, so there is no release date", saved.getReleasedDate());
+
+        saved.setSysUserId("1");
+        analysisService.update(saved);
+        List<AnalysisItem> listed = validationUtility.getAutoValidatedAnalysisBySample(sampleService.get("100"));
+        assertTrue("the Auto-validated results panel lists it",
+                listed.stream().anyMatch(item -> "100".equals(item.getAnalysisId())));
     }
 
     @Test
