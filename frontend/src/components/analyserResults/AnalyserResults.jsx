@@ -164,13 +164,31 @@ const AnalyserResults = (props) => {
   // The lab number typed above the table narrows the rows shown, on part of a
   // number too; saving still works on the whole page.
   const labNumberFilter = (props.labNumberFilter ?? "").trim().toUpperCase();
-  const shownRows = labNumberFilter
-    ? tableRows.filter((row) =>
-        String(row.accessionNumber ?? "")
-          .toUpperCase()
-          .includes(labNumberFilter),
-      )
-    : tableRows;
+  const isShown = (row) =>
+    !labNumberFilter ||
+    row.isControl ||
+    String(row.accessionNumber ?? "")
+      .toUpperCase()
+      .includes(labNumberFilter);
+  const shownRows = tableRows.filter(isShown);
+  // Rows the filter hides are sent with no decision, so Save never accepts,
+  // retests or ignores a result the reviewer can't see.
+  const withoutHiddenDecisions = (form) =>
+    labNumberFilter
+      ? {
+          ...form,
+          resultList: (form?.resultList ?? []).map((row) =>
+            isShown(row)
+              ? row
+              : {
+                  ...row,
+                  isAccepted: false,
+                  isRejected: false,
+                  isDeleted: false,
+                },
+          ),
+        }
+      : form;
   const arrows = serverPageArrowsProps({
     paging: props.results?.paging,
     onPageRequest: (pageNumber) => props.loadPage?.(pageNumber),
@@ -279,7 +297,7 @@ const AnalyserResults = (props) => {
     setIsSubmitting(true);
     postToOpenElisServerFullResponse(
       "/rest/AnalyzerResults",
-      JSON.stringify(props.results),
+      JSON.stringify(withoutHiddenDecisions(props.results)),
       handleResponse,
     );
   };

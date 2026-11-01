@@ -242,6 +242,21 @@ describe("AnalyserResults", () => {
     expect(screen.getByText("ACC-2")).toBeInTheDocument();
   });
 
+  it("never saves a decision on a result the lab number filter hides", () => {
+    const shown = matched("7201", 1, { isAccepted: true });
+    const hidden = matched("7202", 2, { isAccepted: true });
+    renderResults([shown, hidden], [shown, hidden], "acc-1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const submitted = JSON.parse(postResults.mock.calls[0][1]);
+    const byId = Object.fromEntries(
+      submitted.resultList.map((row) => [row.id, row]),
+    );
+    expect(byId["7201"].isAccepted).toBe(true);
+    expect(byId["7202"].isAccepted).toBe(false);
+  });
+
   it("shows every row when no lab number is typed", () => {
     const rows = [matched("7101", 1), matched("7102", 2)];
     renderResults(rows, rows);
