@@ -7,6 +7,7 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import org.openelisglobal.common.log.LogEvent;
+import org.openelisglobal.qa.security.QaPermissions;
 import org.openelisglobal.qc.service.QCChartDataService;
 import org.openelisglobal.qc.valueholder.QCResult;
 import org.openelisglobal.qc.valueholder.QCRuleViolation;
@@ -31,7 +32,9 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/rest/qc/charts")
-@PreAuthorize("hasRole('ADMIN')")
+// Reading QC is open to the QA viewers (qa.view.qc); every change stays with
+// the administrator, on its own handler below.
+@PreAuthorize(QaPermissions.VIEW_QC)
 public class QCChartDataRestController {
 
     @Autowired

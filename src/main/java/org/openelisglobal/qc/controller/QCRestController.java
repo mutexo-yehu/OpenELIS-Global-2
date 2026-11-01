@@ -52,7 +52,9 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/rest/qc")
-@PreAuthorize("hasRole('ADMIN')")
+// Reading QC is open to the QA viewers (qa.view.qc); every change stays with
+// the administrator, on its own handler below.
+@PreAuthorize(QaPermissions.VIEW_QC)
 public class QCRestController extends BaseRestController {
 
     private static final String[] ALLOWED_FIELDS = new String[] { "id", "productName", "lotNumber", "manufacturer",
@@ -172,6 +174,7 @@ public class QCRestController extends BaseRestController {
     /**
      * Create or update a control lot. POST /rest/qc/controlLot
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/controlLot")
     public ResponseEntity<Object> saveControlLot(@RequestBody @Valid QCControlLotForm form, BindingResult result,
             HttpServletRequest request)
@@ -229,6 +232,7 @@ public class QCRestController extends BaseRestController {
      * Activate a control lot (transition from ESTABLISHMENT to ACTIVE). PUT
      * /rest/qc/controlLot/{id}/activate
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/controlLot/{id}/activate")
     public ResponseEntity<Object> activateControlLot(@PathVariable("id") String id) {
         try {
@@ -249,6 +253,7 @@ public class QCRestController extends BaseRestController {
      * Deactivate a control lot (mark as EXPIRED). PUT
      * /rest/qc/controlLot/{id}/deactivate
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/controlLot/{id}/deactivate")
     public ResponseEntity<Object> deactivateControlLot(@PathVariable("id") String id) {
         try {
@@ -288,6 +293,7 @@ public class QCRestController extends BaseRestController {
      * Calculate initial runs statistics for a control lot. POST
      * /rest/qc/controlLot/{id}/statistics/initialRuns?requiredRuns={requiredRuns}
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/controlLot/{id}/statistics/initialRuns")
     public ResponseEntity<Object> calculateInitialRunsStatistics(@PathVariable("id") String id,
             @RequestParam Integer requiredRuns) {
@@ -308,6 +314,7 @@ public class QCRestController extends BaseRestController {
      * Calculate rolling window statistics for a control lot. POST
      * /rest/qc/controlLot/{id}/statistics/rolling?windowSize={windowSize}
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/controlLot/{id}/statistics/rolling")
     public ResponseEntity<Object> calculateRollingStatistics(@PathVariable("id") String id,
             @RequestParam Integer windowSize) {
@@ -362,6 +369,7 @@ public class QCRestController extends BaseRestController {
     /**
      * Update a single rule configuration. PUT /rest/qc/ruleConfig/{id}
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/ruleConfig/{id}")
     public ResponseEntity<Object> updateRuleConfiguration(@PathVariable("id") String id,
             @RequestBody @Valid WestgardRuleConfigForm.RuleConfigDTO ruleConfigDTO, BindingResult result) {
@@ -403,6 +411,7 @@ public class QCRestController extends BaseRestController {
      * Apply a preset configuration (BASIC, STANDARD, COMPREHENSIVE). POST
      * /rest/qc/ruleConfig/preset?testId={testId}&instrumentId={instrumentId}&preset={preset}
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/ruleConfig/preset")
     public ResponseEntity<Object> applyPresetConfiguration(@RequestParam String testId,
             @RequestParam String instrumentId, @RequestParam String preset) {
@@ -423,6 +432,7 @@ public class QCRestController extends BaseRestController {
      * Create default rule configurations for a new test-instrument combination.
      * POST /rest/qc/ruleConfig/defaults?testId={testId}&instrumentId={instrumentId}
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/ruleConfig/defaults")
     public ResponseEntity<Object> createDefaultRuleConfigurations(@RequestParam String testId,
             @RequestParam String instrumentId) {
@@ -448,6 +458,7 @@ public class QCRestController extends BaseRestController {
      * Validate the current rule configuration. POST
      * /rest/qc/ruleConfig/validate?testId={testId}&instrumentId={instrumentId}
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/ruleConfig/validate")
     public ResponseEntity<Object> validateRuleConfiguration(@RequestParam String testId,
             @RequestParam String instrumentId) {

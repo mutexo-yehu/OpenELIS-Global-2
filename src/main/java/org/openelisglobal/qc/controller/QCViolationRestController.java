@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.util.ControllerUtills;
+import org.openelisglobal.qa.security.QaPermissions;
 import org.openelisglobal.qc.form.QCViolationForm;
 import org.openelisglobal.qc.service.QCRuleViolationService;
 import org.openelisglobal.qc.valueholder.QCRuleViolation;
@@ -28,7 +29,9 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/rest/qc/violations")
-@PreAuthorize("hasRole('ADMIN')")
+// Reading QC is open to the QA viewers (qa.view.qc); every change stays with
+// the administrator, on its own handler below.
+@PreAuthorize(QaPermissions.VIEW_QC)
 public class QCViolationRestController {
 
     @Autowired
@@ -91,6 +94,7 @@ public class QCViolationRestController {
      * @param request The resolution request containing notes
      * @return The resolved violation
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/{id}/resolve")
     public ResponseEntity<QCViolationForm> resolveViolation(@PathVariable String id,
             @Valid @RequestBody QCViolationForm.ResolveRequest request, HttpServletRequest httpRequest) {
@@ -118,6 +122,7 @@ public class QCViolationRestController {
      * @param id The violation ID
      * @return The acknowledged violation
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/{id}/acknowledge")
     public ResponseEntity<QCViolationForm> acknowledgeViolation(@PathVariable String id,
             HttpServletRequest httpRequest) {

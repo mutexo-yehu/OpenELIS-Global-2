@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.util.ControllerUtills;
+import org.openelisglobal.qa.security.QaPermissions;
 import org.openelisglobal.qc.service.QCAlertService;
 import org.openelisglobal.qc.valueholder.QCAlert;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,7 +28,9 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/rest/qc/alerts")
-@PreAuthorize("hasRole('ADMIN')")
+// Reading QC is open to the QA viewers (qa.view.qc); every change stays with
+// the administrator, on its own handler below.
+@PreAuthorize(QaPermissions.VIEW_QC)
 public class QCAlertRestController {
 
     @Autowired
@@ -80,6 +83,7 @@ public class QCAlertRestController {
     /**
      * Mark a single alert as read. PUT /rest/qc/alerts/{id}/read
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{id}/read")
     public ResponseEntity<Object> markAsRead(@PathVariable("id") String id) {
         try {
@@ -98,6 +102,7 @@ public class QCAlertRestController {
     /**
      * Mark multiple alerts as read. PUT /rest/qc/alerts/read
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/read")
     public ResponseEntity<Object> markMultipleAsRead(@RequestBody List<String> alertIds) {
         try {
