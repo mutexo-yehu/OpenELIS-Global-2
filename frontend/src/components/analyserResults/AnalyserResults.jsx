@@ -161,6 +161,16 @@ const AnalyserResults = (props) => {
   const { decisionHeadIds, partsByHeadId, partIds } =
     groupTestParts(patientResults);
   const tableRows = patientResults.filter((row) => !partIds.has(row.id));
+  // The lab number typed above the table narrows the rows shown, on part of a
+  // number too; saving still works on the whole page.
+  const labNumberFilter = (props.labNumberFilter ?? "").trim().toUpperCase();
+  const shownRows = labNumberFilter
+    ? tableRows.filter((row) =>
+        String(row.accessionNumber ?? "")
+          .toUpperCase()
+          .includes(labNumberFilter),
+      )
+    : tableRows;
   const arrows = serverPageArrowsProps({
     paging: props.results?.paging,
     onPageRequest: (pageNumber) => props.loadPage?.(pageNumber),
@@ -946,7 +956,7 @@ const AnalyserResults = (props) => {
           <Form onChange={handleChange}>
             {arrows.show && <ServerPageArrows {...arrows} />}
             <DataTable
-              data={tableRows}
+              data={shownRows}
               columns={columns}
               isSortable
             ></DataTable>

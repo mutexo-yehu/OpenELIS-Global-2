@@ -59,6 +59,7 @@ const mappedQualitativeResult = {
 const renderResults = (
   resultList = [heldResult],
   sampleGroup = [resultList[0]],
+  labNumberFilter = "",
 ) => {
   const history = createMemoryHistory({
     initialEntries: ["/AnalyzerResults?id=2001"],
@@ -80,6 +81,7 @@ const renderResults = (
               results={{ resultList: resultList.map((row) => ({ ...row })) }}
               sampleGroup={sampleGroup}
               analyzerId="2001"
+              labNumberFilter={labNumberFilter}
             />
           </NotificationContext.Provider>
         </ConfigurationContext.Provider>
@@ -230,6 +232,22 @@ describe("AnalyserResults", () => {
       "DEV01260000000000038",
     );
     expect(submitted.resultList[0].redirectReason).toBe("Label misread");
+  });
+
+  it("shows only the rows whose lab number contains the typed lab number", () => {
+    const rows = [matched("7001", 1), matched("7002", 2)];
+    renderResults(rows, rows, "acc-2");
+
+    expect(screen.queryByText("ACC-1")).not.toBeInTheDocument();
+    expect(screen.getByText("ACC-2")).toBeInTheDocument();
+  });
+
+  it("shows every row when no lab number is typed", () => {
+    const rows = [matched("7101", 1), matched("7102", 2)];
+    renderResults(rows, rows);
+
+    expect(screen.getByText("ACC-1")).toBeInTheDocument();
+    expect(screen.getByText("ACC-2")).toBeInTheDocument();
   });
 
   it("shows the specimen ID the instrument sent when it differs from the accession", () => {

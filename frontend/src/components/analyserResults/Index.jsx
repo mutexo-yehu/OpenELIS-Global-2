@@ -346,6 +346,7 @@ const Index = () => {
           refreshResults={refreshResults}
           serverPageSize={serverPageSize}
           loadPage={loadResultsPage}
+          labNumberFilter={labNumber}
         />
       </div>
     </>
