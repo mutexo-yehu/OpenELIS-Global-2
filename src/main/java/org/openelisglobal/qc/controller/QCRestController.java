@@ -49,6 +49,11 @@ import org.springframework.web.bind.annotation.RestController;
  * REST Controller for QC Control Lot management. Supports User Story 6: Manage
  * QC Control Lots Following Constitution IV.5: @Transactional in services ONLY
  * (NOT controllers)
+ *
+ * <p>
+ * Every read takes {@link QaPermissions#VIEW_QC} on its own handler; anything
+ * that changes QC data keeps the class rule, Global Administrator only, so a
+ * new handler is closed until it says otherwise.
  */
 @RestController
 @RequestMapping("/rest/qc")
@@ -72,7 +77,10 @@ public class QCRestController extends BaseRestController {
     @Autowired
     private QCDashboardService dashboardService;
 
+    // Runs before every handler that binds a parameter or body, reads included,
+    // so it admits whoever may read; each handler then applies its own rule.
     @InitBinder
+    @PreAuthorize(QaPermissions.VIEW_QC)
     public void initBinder(WebDataBinder binder) {
         binder.setAllowedFields(ALLOWED_FIELDS);
     }
@@ -95,6 +103,7 @@ public class QCRestController extends BaseRestController {
      * </ul>
      */
     @GetMapping("/controlLots")
+    @PreAuthorize(QaPermissions.VIEW_QC)
     public ResponseEntity<List<QCControlLot>> getActiveControlLots(@RequestParam(required = false) String testId,
             @RequestParam(required = false) String instrumentId) {
         boolean hasTest = StringUtils.isNotBlank(testId);
@@ -122,6 +131,7 @@ public class QCRestController extends BaseRestController {
      * Get all control lots (all statuses). GET /rest/qc/control-lots
      */
     @GetMapping("/control-lots")
+    @PreAuthorize(QaPermissions.VIEW_QC)
     public ResponseEntity<List<QCControlLot>> getAllControlLots() {
         try {
             List<QCControlLot> lots = controlLotService.getAllControlLots();
@@ -136,6 +146,7 @@ public class QCRestController extends BaseRestController {
      * Get a specific control lot by ID. GET /rest/qc/controlLot/{id}
      */
     @GetMapping("/controlLot/{id}")
+    @PreAuthorize(QaPermissions.VIEW_QC)
     public ResponseEntity<QCControlLot> getControlLot(@PathVariable("id") String id) {
         try {
             QCControlLot controlLot = controlLotService.get(id);
@@ -155,6 +166,7 @@ public class QCRestController extends BaseRestController {
      * /rest/qc/controlLot/byLotNumber/{lotNumber}
      */
     @GetMapping("/controlLot/byLotNumber/{lotNumber}")
+    @PreAuthorize(QaPermissions.VIEW_QC)
     public ResponseEntity<QCControlLot> getControlLotByLotNumber(@PathVariable("lotNumber") String lotNumber) {
         try {
             QCControlLot controlLot = controlLotService.getControlLotByLotNumber(lotNumber);
@@ -270,6 +282,7 @@ public class QCRestController extends BaseRestController {
      * /rest/qc/controlLot/{id}/statistics
      */
     @GetMapping("/controlLot/{id}/statistics")
+    @PreAuthorize(QaPermissions.VIEW_QC)
     public ResponseEntity<QCStatistics> getLatestStatistics(@PathVariable("id") String id) {
         try {
             QCStatistics statistics = statisticsService.getLatestStatistics(id);
@@ -332,6 +345,7 @@ public class QCRestController extends BaseRestController {
      * /rest/qc/ruleConfig?testId={testId}&instrumentId={instrumentId}
      */
     @GetMapping("/ruleConfig")
+    @PreAuthorize(QaPermissions.VIEW_QC)
     public ResponseEntity<List<WestgardRuleConfig>> getRuleConfigurations(@RequestParam String testId,
             @RequestParam String instrumentId) {
         try {
@@ -348,6 +362,7 @@ public class QCRestController extends BaseRestController {
      * /rest/qc/ruleConfig/enabled?testId={testId}&instrumentId={instrumentId}
      */
     @GetMapping("/ruleConfig/enabled")
+    @PreAuthorize(QaPermissions.VIEW_QC)
     public ResponseEntity<List<WestgardRuleConfig>> getEnabledRuleConfigurations(@RequestParam String testId,
             @RequestParam String instrumentId) {
         try {
@@ -469,6 +484,7 @@ public class QCRestController extends BaseRestController {
      * /rest/qc/ruleConfig/summaries
      */
     @GetMapping("/ruleConfig/summaries")
+    @PreAuthorize(QaPermissions.VIEW_QC)
     public ResponseEntity<List<RuleConfigSummary>> getAllRuleConfigSummaries() {
         try {
             List<RuleConfigSummary> summaries = ruleConfigService.getAllRuleConfigSummaries();
@@ -484,6 +500,7 @@ public class QCRestController extends BaseRestController {
      * /rest/qc/ruleConfig/unconfigured
      */
     @GetMapping("/ruleConfig/unconfigured")
+    @PreAuthorize(QaPermissions.VIEW_QC)
     public ResponseEntity<List<UnconfiguredMapping>> getUnconfiguredMappings() {
         try {
             List<UnconfiguredMapping> mappings = ruleConfigService.getUnconfiguredMappings();
@@ -524,6 +541,7 @@ public class QCRestController extends BaseRestController {
     }
 
     @GetMapping("/dashboard/summary")
+    @PreAuthorize(QaPermissions.VIEW_QC)
     public ResponseEntity<QCDashboardSummary> getDashboardSummary(
             @RequestParam(value = "months", defaultValue = "1") int months) {
         try {
@@ -541,6 +559,7 @@ public class QCRestController extends BaseRestController {
      * /rest/qc/dashboard/instruments?months=1
      */
     @GetMapping("/dashboard/instruments")
+    @PreAuthorize(QaPermissions.VIEW_QC)
     public ResponseEntity<List<InstrumentQCStatus>> getAllInstrumentQCStatus(
             @RequestParam(value = "months", defaultValue = "1") int months) {
         try {
@@ -558,6 +577,7 @@ public class QCRestController extends BaseRestController {
      * /rest/qc/dashboard/instruments/{instrumentId}?months=1
      */
     @GetMapping("/dashboard/instruments/{instrumentId}")
+    @PreAuthorize(QaPermissions.VIEW_QC)
     public ResponseEntity<InstrumentQCStatus> getInstrumentQCStatus(@PathVariable("instrumentId") String instrumentId,
             @RequestParam(value = "months", defaultValue = "1") int months) {
         try {
